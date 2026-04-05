@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: dahej-control-system-api
+    runtime: node
+    rootDir: server
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/v1/health
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/uploads
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 10000
+      - key: UPLOADS_DIR
+        value: /opt/render/project/uploads
+      - key: SERVER_PUBLIC_URL
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_ISSUER
+        value: dahej-control-system
+      - key: JWT_AUDIENCE
+        value: dahej-control-system-admin
+      - key: LOCATION_ENCRYPTION_KEY
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 1d
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: CLIENT_URL
+        sync: false
+      - key: BCRYPT_SALT_ROUNDS
+        value: 10
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-5-mini
