@@ -7,6 +7,7 @@ import { DashboardPage } from '../pages/DashboardPage';
 import { HomePage } from '../pages/HomePage';
 import { LoginPage } from '../pages/LoginPage';
 import { NotFoundPage } from '../pages/NotFoundPage';
+import { CaseTrackingPage } from '../pages/CaseTrackingPage';
 
 export const router = createBrowserRouter([
   {
@@ -24,6 +25,10 @@ export const router = createBrowserRouter([
       {
         path: 'report',
         element: <ComplaintPage />
+      },
+      {
+        path: 'track/:anonymousId',
+        element: <CaseTrackingPage />
       },
       {
         path: 'dashboard',

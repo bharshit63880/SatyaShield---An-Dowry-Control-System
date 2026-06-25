@@ -202,3 +202,95 @@ export function validateChatbotRequest(req, _res, next) {
   next();
 }
 
+export function validateRegistrationRequest(req, _res, next) {
+  const name = normalizeText(req.body.name, 100);
+  const email = normalizeText(req.body.email, 254).toLowerCase();
+  const password = String(req.body.password ?? '');
+  const role = normalizeText(req.body.role, 40) || 'user';
+
+  if (!email || !password || !name) {
+    return next(new ApiError(400, 'Name, email, and password are required.', { code: 'AUTH_REQUIRED_FIELDS' }));
+  }
+
+  if (!isEmail(email)) {
+    return next(new ApiError(400, 'Enter a valid email address.', { code: 'AUTH_INVALID_EMAIL' }));
+  }
+
+  if (password.length < 8) {
+    return next(new ApiError(400, 'Password must be at least 8 characters long.', { code: 'AUTH_INVALID_PASSWORD_LENGTH' }));
+  }
+
+  const allowedRoles = ['user', 'ngo', 'investigator', 'admin', 'superadmin'];
+  if (!allowedRoles.includes(role)) {
+    return next(new ApiError(400, 'Invalid registration role.', { code: 'AUTH_INVALID_ROLE' }));
+  }
+
+  req.validated = {
+    ...req.validated,
+    registration: { name, email, password, role }
+  };
+  next();
+}
+
+export function validateForgotPasswordRequest(req, _res, next) {
+  const email = normalizeText(req.body.email, 254).toLowerCase();
+  if (!email || !isEmail(email)) {
+    return next(new ApiError(400, 'Enter a valid email address.', { code: 'AUTH_INVALID_EMAIL' }));
+  }
+
+  req.validated = {
+    ...req.validated,
+    forgotPassword: { email }
+  };
+  next();
+}
+
+export function validateResetPasswordRequest(req, _res, next) {
+  const token = String(req.body.token ?? '').trim();
+  const newPassword = String(req.body.newPassword ?? '');
+
+  if (!token || !newPassword) {
+    return next(new ApiError(400, 'Token and new password are required.', { code: 'AUTH_REQUIRED_FIELDS' }));
+  }
+
+  if (newPassword.length < 8) {
+    return next(new ApiError(400, 'Password must be at least 8 characters long.', { code: 'AUTH_INVALID_PASSWORD_LENGTH' }));
+  }
+
+  req.validated = {
+    ...req.validated,
+    resetPassword: { token, newPassword }
+  };
+  next();
+}
+
+export function validateMfaVerifyRequest(req, _res, next) {
+  const userId = String(req.body.userId ?? '').trim();
+  const mfaToken = String(req.body.mfaToken ?? '').trim();
+  const code = String(req.body.code ?? '').trim();
+
+  if (!userId || !mfaToken || !code) {
+    return next(new ApiError(400, 'User ID, MFA token, and code are required.', { code: 'AUTH_REQUIRED_FIELDS' }));
+  }
+
+  req.validated = {
+    ...req.validated,
+    mfaVerify: { userId, mfaToken, code }
+  };
+  next();
+}
+
+export function validateMfaEnableRequest(req, _res, next) {
+  const code = String(req.body.code ?? '').trim();
+  if (!code) {
+    return next(new ApiError(400, 'Code is required.', { code: 'AUTH_REQUIRED_FIELDS' }));
+  }
+
+  req.validated = {
+    ...req.validated,
+    mfaEnable: { code }
+  };
+  next();
+}
+
+

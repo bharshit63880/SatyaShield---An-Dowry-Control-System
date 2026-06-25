@@ -41,14 +41,36 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
     });
   }
 
+  if (user.accountLocked) {
+    throw new ApiError(423, 'Account is locked.', { code: 'AUTH_ACCOUNT_LOCKED' });
+  }
+
   req.user = user;
   next();
 });
 
-export function requireAdmin(req, _res, next) {
-  if (req.user?.role !== 'admin') {
-    return next(new ApiError(403, 'Admin access is required.', { code: 'AUTH_ADMIN_REQUIRED' }));
-  }
+// Checks if the user role is within a list of allowed roles
+export function requireRoles(roles = []) {
+  return (req, _res, next) => {
+    if (!req.user) {
+      return next(new ApiError(401, 'Authentication is required.', { code: 'AUTH_REQUIRED' }));
+    }
 
-  next();
+    if (!roles.includes(req.user.role)) {
+      return next(
+        new ApiError(403, `Access denied. Role policy violation. Requires one of: ${roles.join(', ')}`, {
+          code: 'AUTH_ROLE_DENIED'
+        })
+      );
+    }
+
+    next();
+  };
 }
+
+// Shortcut checks
+export const requireAdmin = requireRoles(['admin', 'superadmin']);
+export const requireSuperAdmin = requireRoles(['superadmin']);
+export const requireNGO = requireRoles(['ngo', 'admin', 'superadmin']);
+export const requireInvestigator = requireRoles(['investigator', 'admin', 'superadmin']);
+export const requireStaff = requireRoles(['ngo', 'investigator', 'admin', 'superadmin']);

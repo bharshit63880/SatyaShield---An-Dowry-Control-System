@@ -3,24 +3,73 @@ import { Link } from 'react-router-dom';
 export function NotFoundPage() {
   return (
     <div className="page-shell py-10">
-      <section className="surface-panel flex min-h-[70vh] flex-col items-center justify-center px-6 py-12 text-center">
-        <p className="eyebrow">404</p>
-        <h1 className="mt-4 font-display text-5xl tracking-[-0.04em] text-brand-950 sm:text-6xl">
-          This route stepped out of the product.
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '70vh',
+        textAlign: 'center'
+      }}>
+        {/* Glitch 404 */}
+        <div style={{
+          fontSize: 'clamp(80px, 15vw, 160px)',
+          fontWeight: '900',
+          letterSpacing: '-0.05em',
+          lineHeight: 1,
+          background: 'linear-gradient(135deg, rgba(0,229,204,0.5) 0%, rgba(124,58,237,0.5) 100%)',
+          WebkitBackgroundClip: 'text',
+          WebkitTextFillColor: 'transparent',
+          backgroundClip: 'text',
+          marginBottom: '8px',
+          filter: 'drop-shadow(0 0 30px rgba(0,229,204,0.3))'
+        }}>
+          404
+        </div>
+
+        <p className="eyebrow" style={{ marginBottom: '16px' }}>Access Denied</p>
+
+        <h1 style={{
+          fontSize: 'clamp(22px, 3vw, 36px)',
+          fontWeight: '800',
+          color: '#fff',
+          letterSpacing: '-0.03em',
+          marginBottom: '16px',
+          maxWidth: '500px'
+        }}>
+          This route stepped out of the system.
         </h1>
-        <p className="mt-4 max-w-xl text-base leading-8 text-brand-600">
-          The page you requested is not part of the current experience. Return to the home page or
-          continue into the admin workspace.
+
+        <p style={{
+          fontSize: '15px',
+          color: 'rgba(255,255,255,0.4)',
+          maxWidth: '460px',
+          lineHeight: '1.7',
+          marginBottom: '36px'
+        }}>
+          The page you requested is not part of the current experience. Return home or enter the operator workspace.
         </p>
-        <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link to="/" className="button-primary">
-            Back home
+
+        <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <Link to="/" className="button-primary" style={{ padding: '13px 28px', fontSize: '14px' }}>
+            ← Back Home
           </Link>
-          <Link to="/login" className="button-secondary">
-            Login
+          <Link to="/login" className="button-secondary" style={{ padding: '12px 24px', fontSize: '14px' }}>
+            Operator Login
           </Link>
         </div>
-      </section>
+
+        {/* Terminal-style footer text */}
+        <div style={{
+          marginTop: '48px',
+          fontFamily: 'JetBrains Mono, monospace',
+          fontSize: '12px',
+          color: 'rgba(0,229,204,0.3)',
+          letterSpacing: '0.05em'
+        }}>
+          SatyaShield Security System — Route not found / Access logged
+        </div>
+      </div>
     </div>
   );
 }

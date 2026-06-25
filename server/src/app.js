@@ -8,10 +8,11 @@ import morgan from 'morgan';
 import { env, isProduction } from './config/env.js';
 import { requestContext } from './middlewares/request-context.middleware.js';
 import { sanitizeRequest } from './middlewares/sanitize.middleware.js';
-import { uploadsDirectory } from './config/paths.js';
+import { uploadsDirectory, serverRoot } from './config/paths.js';
 import { ApiError } from './utils/ApiError.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import apiRoutes from './routes/index.js';
+import path from 'path';
 
 const app = express();
 

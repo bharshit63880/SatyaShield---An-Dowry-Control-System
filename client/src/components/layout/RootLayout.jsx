@@ -1,107 +1,212 @@
+import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router-dom';
 
 import { FloatingChatWidget } from '../chatbot/FloatingChatWidget';
 import { useAuth } from '../../hooks/useAuth';
 
 const navigation = [
-  { to: '/', label: 'Home' },
-  { to: '/report', label: 'Report' },
-  { to: '/dashboard', label: 'Dashboard' }
+  { to: '/', label: 'Home', icon: '⬡' },
+  { to: '/report', label: 'Report', icon: '◈' },
+  { to: '/dashboard', label: 'Dashboard', icon: '◉' }
 ];
 
 export function RootLayout() {
   const { isAuthenticated, logout, user } = useAuth();
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="min-h-screen bg-brand-50 text-brand-950">
-      <div className="pointer-events-none fixed inset-0 bg-grid-fade bg-[size:52px_52px] opacity-40" />
-      <div className="pointer-events-none fixed inset-x-0 top-0 h-[420px] bg-[radial-gradient(circle_at_top,rgba(61,150,239,0.14),transparent_55%)]" />
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 h-[320px] bg-[radial-gradient(circle_at_bottom_left,rgba(24,170,162,0.1),transparent_55%)]" />
-
-      <header className="sticky top-0 z-40">
-        <div className="page-shell py-5">
-          <div className="flex items-center justify-between gap-4 rounded-full border border-white/80 bg-white/80 px-4 py-3 shadow-[0_18px_50px_rgba(15,28,61,0.08)] backdrop-blur-xl sm:px-6">
-            <Link to="/" className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-brand-950 text-sm font-bold tracking-[0.22em] text-white">
-                DC
+    <div className="min-h-screen" style={{ background: 'transparent', color: '#f0f4f8' }}>
+      {/* Header */}
+      <header className="sticky top-0 z-50">
+        <div className="page-shell py-4">
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '16px',
+            background: 'rgba(6, 11, 20, 0.85)',
+            border: '1px solid rgba(0,229,204,0.15)',
+            borderRadius: '100px',
+            padding: '10px 16px 10px 12px',
+            backdropFilter: 'blur(20px)',
+            boxShadow: '0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(0,229,204,0.05)'
+          }}>
+            {/* Logo */}
+            <Link to="/" style={{ display: 'flex', alignItems: 'center', gap: '12px', flexShrink: 0 }}>
+              <div style={{
+                width: '44px', height: '44px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                background: 'linear-gradient(135deg, rgba(0,229,204,0.15) 0%, rgba(0,229,204,0.05) 100%)',
+                border: '1px solid rgba(0,229,204,0.3)',
+                borderRadius: '14px',
+                fontSize: '18px',
+                boxShadow: '0 0 15px rgba(0,229,204,0.15), inset 0 1px 0 rgba(255,255,255,0.1)'
+              }}>
+                🛡️
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.34em] text-brand-500">
-                  Trust & Response
+                <p style={{ fontSize: '9px', fontWeight: '700', letterSpacing: '0.3em', textTransform: 'uppercase', color: '#00e5cc', margin: 0 }}>
+                  Anti-Dowry
                 </p>
-                <p className="text-sm font-semibold text-brand-950 sm:text-base">Dahej Control</p>
+                <p style={{ fontSize: '15px', fontWeight: '800', color: '#fff', margin: 0, letterSpacing: '-0.02em' }}>
+                  SatyaShield
+                </p>
               </div>
             </Link>
 
-            <nav className="hidden items-center gap-2 rounded-full border border-brand-100 bg-brand-50/80 p-1.5 lg:flex">
+            {/* Desktop Nav */}
+            <nav className="hidden lg:flex" style={{
+              alignItems: 'center',
+              gap: '4px',
+              background: 'rgba(0,0,0,0.3)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: '100px',
+              padding: '5px'
+            }}>
               {navigation.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
+                  end={item.to === '/'}
                   className={({ isActive }) =>
-                    `rounded-full px-4 py-2 text-sm font-medium transition ${
-                      isActive
-                        ? 'bg-brand-950 text-white shadow-[0_10px_25px_rgba(15,28,61,0.22)]'
-                        : 'text-brand-700 hover:bg-white hover:text-brand-950'
-                    }`
+                    `nav-item ${isActive ? 'nav-active' : ''}`
                   }
+                  style={({ isActive }) => ({
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    padding: '8px 18px',
+                    borderRadius: '100px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    letterSpacing: '0.01em',
+                    transition: 'all 0.25s ease',
+                    textDecoration: 'none',
+                    background: isActive ? 'rgba(0,229,204,0.12)' : 'transparent',
+                    color: isActive ? '#00e5cc' : 'rgba(255,255,255,0.55)',
+                    border: isActive ? '1px solid rgba(0,229,204,0.3)' : '1px solid transparent',
+                    boxShadow: isActive ? '0 0 12px rgba(0,229,204,0.15)' : 'none'
+                  })}
                 >
                   {item.label}
                 </NavLink>
               ))}
             </nav>
 
-            <div className="flex items-center gap-2">
-              {isAuthenticated && user ? (
-                <div className="hidden rounded-full border border-accent-200 bg-accent-50 px-4 py-2 text-sm font-medium text-accent-700 md:block">
-                  Admin session active
+            {/* Right actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              {isAuthenticated && user && (
+                <div style={{
+                  display: 'none',
+                  padding: '6px 14px',
+                  background: 'rgba(0,229,204,0.08)',
+                  border: '1px solid rgba(0,229,204,0.2)',
+                  borderRadius: '100px',
+                  fontSize: '12px',
+                  fontWeight: '600',
+                  color: '#00e5cc'
+                }} className="md:!flex items-center gap-2">
+                  <span className="pulse-dot" style={{width:'6px',height:'6px'}}></span>
+                  Session Active
                 </div>
-              ) : null}
+              )}
 
               {isAuthenticated ? (
-                <button
-                  type="button"
-                  onClick={logout}
-                  className="button-secondary !px-4 !py-2.5"
-                >
-                  Sign out
+                <button type="button" onClick={logout} className="button-ghost" style={{fontSize:'13px',padding:'8px 18px'}}>
+                  Sign Out
                 </button>
               ) : (
-                <NavLink
-                  to="/login"
-                  className={({ isActive }) =>
-                    isActive ? 'button-primary !px-4 !py-2.5' : 'button-secondary !px-4 !py-2.5'
-                  }
-                >
-                  Login
+                <NavLink to="/login" className="button-primary" style={{fontSize:'13px',padding:'8px 20px'}}>
+                  Operator Login
                 </NavLink>
               )}
+
+              {/* Mobile menu toggle */}
+              <button
+                type="button"
+                className="lg:hidden"
+                onClick={() => setMobileOpen(!mobileOpen)}
+                style={{
+                  width: '38px', height: '38px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(255,255,255,0.05)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '10px',
+                  color: 'rgba(255,255,255,0.7)',
+                  cursor: 'pointer',
+                  fontSize: '18px'
+                }}
+              >
+                {mobileOpen ? '✕' : '☰'}
+              </button>
             </div>
           </div>
 
-          <nav className="mt-3 flex items-center gap-2 overflow-x-auto rounded-full border border-white/80 bg-white/70 p-2 shadow-[0_12px_32px_rgba(15,28,61,0.06)] backdrop-blur lg:hidden">
-            {navigation.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `whitespace-nowrap rounded-full px-4 py-2 text-sm font-medium transition ${
-                    isActive
-                      ? 'bg-brand-950 text-white'
-                      : 'text-brand-700 hover:bg-brand-50 hover:text-brand-950'
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+          {/* Mobile nav */}
+          {mobileOpen && (
+            <div style={{
+              marginTop: '8px',
+              background: 'rgba(6,11,20,0.95)',
+              border: '1px solid rgba(0,229,204,0.15)',
+              borderRadius: '16px',
+              padding: '8px',
+              backdropFilter: 'blur(20px)',
+              animation: 'rise 300ms ease-out'
+            }}>
+              {navigation.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.to === '/'}
+                  onClick={() => setMobileOpen(false)}
+                  style={({ isActive }) => ({
+                    display: 'flex',
+                    alignItems: 'center',
+                    padding: '12px 16px',
+                    borderRadius: '10px',
+                    fontSize: '14px',
+                    fontWeight: '600',
+                    textDecoration: 'none',
+                    color: isActive ? '#00e5cc' : 'rgba(255,255,255,0.6)',
+                    background: isActive ? 'rgba(0,229,204,0.08)' : 'transparent',
+                    marginBottom: '4px'
+                  })}
+                >
+                  {item.label}
+                </NavLink>
+              ))}
+            </div>
+          )}
         </div>
       </header>
 
-      <main className="relative z-10 pb-16">
+      {/* Main content */}
+      <main className="relative z-10 pb-20">
         <Outlet />
       </main>
+
+      {/* Footer */}
+      <footer style={{
+        borderTop: '1px solid rgba(0,229,204,0.08)',
+        padding: '32px 0',
+        background: 'rgba(0,0,0,0.2)',
+        position: 'relative',
+        zIndex: 10
+      }}>
+        <div className="page-shell">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '20px' }}>🛡️</span>
+              <span style={{ fontSize: '13px', fontWeight: '700', color: 'rgba(255,255,255,0.4)', letterSpacing: '0.05em' }}>
+                SATYASHIELD — ANTI-DOWRY PROTECTION PLATFORM
+              </span>
+            </div>
+            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.25)', margin: 0 }}>
+              © 2025 SatyaShield. All reports are anonymous & encrypted.
+            </p>
+          </div>
+        </div>
+      </footer>
 
       <FloatingChatWidget />
     </div>

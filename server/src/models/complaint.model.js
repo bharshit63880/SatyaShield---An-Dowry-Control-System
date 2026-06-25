@@ -54,6 +54,19 @@ const complaintSchema = new mongoose.Schema(
       enum: COMPLAINT_RISK_LEVELS,
       default: 'low'
     },
+    indicators: {
+      dowryHarassment: { type: Boolean, default: false },
+      suicideRisk: { type: Boolean, default: false },
+      domesticViolence: { type: Boolean, default: false }
+    },
+    escalationRecommendation: {
+      type: String,
+      default: null
+    },
+    threatSummary: {
+      type: String,
+      default: null
+    },
     assignedNgo: {
       ngoId: {
         type: String,
@@ -96,6 +109,25 @@ const complaintSchema = new mongoose.Schema(
         default: null
       }
     },
+    assignedInvestigator: {
+      investigatorId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        default: null
+      },
+      name: {
+        type: String,
+        default: null
+      },
+      badgeNumber: {
+        type: String,
+        default: null
+      },
+      assignedAt: {
+        type: Date,
+        default: null
+      }
+    },
     timestamp: {
       type: Date,
       default: Date.now
@@ -103,12 +135,17 @@ const complaintSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: COMPLAINT_STATUSES,
-      default: 'submitted'
+      default: 'submitted',
+      index: true
     }
   },
   {
     timestamps: true
   }
 );
+
+// Search indexes
+complaintSchema.index({ riskLevel: 1 });
+complaintSchema.index({ timestamp: -1 });
 
 export const Complaint = mongoose.model('Complaint', complaintSchema);

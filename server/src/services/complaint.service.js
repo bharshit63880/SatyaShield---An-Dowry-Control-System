@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 
 import { COMPLAINT_RISK_LEVELS, COMPLAINT_STATUSES, Complaint } from '../models/complaint.model.js';
+import { CaseHistory } from '../models/case-history.model.js';
 import { analyzeComplaintRisk } from './complaint-risk.service.js';
 import { assignNgoForComplaint } from './ngo-router.service.js';
 import { ApiError } from '../utils/ApiError.js';
@@ -45,8 +46,16 @@ export function serializeComplaintForAdmin(complaint) {
     detectedKeywords: complaint.detectedKeywords ?? [],
     riskScore: complaint.riskScore ?? 0,
     riskLevel: complaint.riskLevel ?? 'low',
+    indicators: complaint.indicators ?? {
+      dowryHarassment: false,
+      suicideRisk: false,
+      domesticViolence: false
+    },
+    escalationRecommendation: complaint.escalationRecommendation || 'Review case timeline.',
+    threatSummary: complaint.threatSummary || 'AI analysis completed.',
     assignedNgo: complaint.assignedNgo ?? null,
-    timestamp: complaint.timestamp,
+    assignedInvestigator: complaint.assignedInvestigator ?? null,
+    timestamp: complaint.timestamp || complaint.createdAt,
     status: complaint.status,
     locationConsent: complaint.locationConsent,
     approximateLocation: location
@@ -61,10 +70,10 @@ export async function createComplaint({
   approximateLocation,
   submissionFingerprintHash
 }) {
-  const riskAnalysis = analyzeComplaintRisk(description);
+  const riskAnalysis = await analyzeComplaintRisk(description);
   const assignedNgo = await assignNgoForComplaint({ approximateLocation });
 
-  return Complaint.create({
+  const complaint = await Complaint.create({
     anonymousId: generateAnonymousId(),
     descriptionEncrypted: description ? encryptSensitiveValue(description.trim()) : null,
     mediaUrl: mediaUrl ?? null,
@@ -77,10 +86,23 @@ export async function createComplaint({
     detectedKeywords: riskAnalysis.detectedKeywords,
     riskScore: riskAnalysis.riskScore,
     riskLevel: riskAnalysis.riskLevel,
+    indicators: riskAnalysis.indicators,
+    escalationRecommendation: riskAnalysis.escalationRecommendation,
+    threatSummary: riskAnalysis.threatSummary,
     assignedNgo,
     status: 'submitted',
     timestamp: new Date()
   });
+
+  // Track initial history log
+  await CaseHistory.create({
+    complaintId: complaint.anonymousId,
+    action: 'complaint_created',
+    description: 'Complaint submitted anonymously in the system.',
+    newStatus: 'submitted'
+  });
+
+  return complaint;
 }
 
 export async function getRecentComplaints(limit = 8) {
@@ -93,19 +115,62 @@ export async function getRecentComplaints(limit = 8) {
   return complaints.map(serializeComplaintForAdmin);
 }
 
-export async function listComplaints({ status }) {
+// Advanced search and filters implementation
+export async function listComplaints({
+  status,
+  riskLevel,
+  assignedNgoId,
+  assignedInvestigatorId,
+  search,
+  page = 1,
+  limit = 10
+}) {
   const query = {};
 
   if (status && status !== 'all') {
     query.status = status;
   }
+  if (riskLevel && riskLevel !== 'all') {
+    query.riskLevel = riskLevel;
+  }
+  if (assignedNgoId) {
+    query['assignedNgo.ngoId'] = assignedNgoId;
+  }
+  if (assignedInvestigatorId) {
+    query['assignedInvestigator.investigatorId'] = assignedInvestigatorId;
+  }
 
-  const complaints = await Complaint.find(query)
+  // Fetch all matching records, decrypt them, filter by search query if applicable, and paginate
+  let complaints = await Complaint.find(query)
     .select('+approximateLocationEncrypted +descriptionEncrypted')
     .sort({ timestamp: -1 })
     .lean();
 
-  return complaints.map(serializeComplaintForAdmin);
+  let serialized = complaints.map(serializeComplaintForAdmin);
+
+  if (search) {
+    const term = search.toLowerCase();
+    serialized = serialized.filter(
+      (c) =>
+        c.anonymousId.toLowerCase().includes(term) ||
+        c.description.toLowerCase().includes(term) ||
+        (c.approximateLocation && c.approximateLocation.toLowerCase().includes(term))
+    );
+  }
+
+  const total = serialized.length;
+  const startIndex = (page - 1) * limit;
+  const paginated = serialized.slice(startIndex, startIndex + limit);
+
+  return {
+    complaints: paginated,
+    pagination: {
+      total,
+      page,
+      limit,
+      pages: Math.ceil(total / limit)
+    }
+  };
 }
 
 export async function getComplaintStatusSummary() {
@@ -154,7 +219,7 @@ export async function getComplaintTrend(days = 7) {
   const counts = await Complaint.aggregate([
     {
       $match: {
-        timestamp: {
+        createdAt: {
           $gte: startDate
         }
       }
@@ -164,7 +229,7 @@ export async function getComplaintTrend(days = 7) {
         _id: {
           $dateToString: {
             format: '%Y-%m-%d',
-            date: '$timestamp'
+            date: '$createdAt'
           }
         },
         count: { $sum: 1 }
@@ -235,9 +300,14 @@ export async function getComplaintHeatmapData(limit = 12) {
     .slice(0, limit);
 }
 
-export async function updateComplaintStatusByAnonymousId(anonymousId, status) {
+export async function updateComplaintStatusByAnonymousId(anonymousId, status, user = null) {
   if (!COMPLAINT_STATUSES.includes(status)) {
     throw new ApiError(400, 'Invalid complaint status.');
+  }
+
+  const oldComplaint = await Complaint.findOne({ anonymousId }).select('status').lean();
+  if (!oldComplaint) {
+    throw new ApiError(404, 'Complaint not found.');
   }
 
   const complaint = await Complaint.findOneAndUpdate(
@@ -248,9 +318,50 @@ export async function updateComplaintStatusByAnonymousId(anonymousId, status) {
     .select('+approximateLocationEncrypted +descriptionEncrypted')
     .lean();
 
+  // Create Case History Log
+  await CaseHistory.create({
+    complaintId: anonymousId,
+    userId: user?.id || null,
+    userName: user?.name || 'System',
+    userRole: user?.role || 'operator',
+    action: 'status_update',
+    description: `Status updated from ${oldComplaint.status} to ${status}.`,
+    previousStatus: oldComplaint.status,
+    newStatus: status
+  });
+
+  return serializeComplaintForAdmin(complaint);
+}
+
+// Assign Investigator
+export async function assignInvestigatorToComplaint(anonymousId, investigator, user = null) {
+  const complaint = await Complaint.findOneAndUpdate(
+    { anonymousId },
+    {
+      assignedInvestigator: {
+        investigatorId: investigator.userId,
+        name: investigator.name,
+        badgeNumber: investigator.badgeNumber,
+        assignedAt: new Date()
+      }
+    },
+    { new: true }
+  )
+    .select('+approximateLocationEncrypted +descriptionEncrypted')
+    .lean();
+
   if (!complaint) {
     throw new ApiError(404, 'Complaint not found.');
   }
+
+  await CaseHistory.create({
+    complaintId: anonymousId,
+    userId: user?.id || null,
+    userName: user?.name || 'System',
+    userRole: user?.role || 'operator',
+    action: 'investigator_assigned',
+    description: `Assigned investigator ${investigator.name} (Badge: ${investigator.badgeNumber})`
+  });
 
   return serializeComplaintForAdmin(complaint);
 }

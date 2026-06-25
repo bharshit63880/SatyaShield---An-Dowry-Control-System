@@ -1,8 +1,9 @@
 import { createContext, startTransition, useEffect, useState } from 'react';
 
-import { getCurrentUser, loginRequest } from '../services/api';
+import { getCurrentUser, loginRequest, loginMfaRequest } from '../services/api';
 
 const TOKEN_STORAGE_KEY = 'dahej-control-system-token';
+const REFRESH_TOKEN_KEY = 'dahej-control-system-refresh-token';
 
 function getStoredToken() {
   if (typeof window === 'undefined') {
@@ -33,6 +34,7 @@ export function AuthProvider({ children }) {
         });
       } catch {
         localStorage.removeItem(TOKEN_STORAGE_KEY);
+        localStorage.removeItem(REFRESH_TOKEN_KEY);
         setToken(null);
         setUser(null);
       } finally {
@@ -45,20 +47,50 @@ export function AuthProvider({ children }) {
 
   async function login(credentials) {
     const response = await loginRequest(credentials);
-    const nextToken = response.data.token;
+    
+    if (response.data.mfaRequired) {
+      return response.data; // Return raw MFA required payload
+    }
+
+    const nextToken = response.data.accessToken || response.data.token;
+    const currentUser = response.data.user;
+    const nextRefreshToken = response.data.refreshToken;
 
     localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+    if (nextRefreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, nextRefreshToken);
+    }
 
     startTransition(() => {
       setToken(nextToken);
-      setUser(response.data.user);
+      setUser(currentUser);
     });
 
-    return response.data.user;
+    return currentUser;
+  }
+
+  async function loginMfa(payload) {
+    const response = await loginMfaRequest(payload);
+    const nextToken = response.data.accessToken || response.data.token;
+    const currentUser = response.data.user;
+    const nextRefreshToken = response.data.refreshToken;
+
+    localStorage.setItem(TOKEN_STORAGE_KEY, nextToken);
+    if (nextRefreshToken) {
+      localStorage.setItem(REFRESH_TOKEN_KEY, nextRefreshToken);
+    }
+
+    startTransition(() => {
+      setToken(nextToken);
+      setUser(currentUser);
+    });
+
+    return currentUser;
   }
 
   function logout() {
     localStorage.removeItem(TOKEN_STORAGE_KEY);
+    localStorage.removeItem(REFRESH_TOKEN_KEY);
     startTransition(() => {
       setToken(null);
       setUser(null);
@@ -71,6 +103,7 @@ export function AuthProvider({ children }) {
         isAuthenticated: Boolean(token),
         isReady,
         login,
+        loginMfa,
         logout,
         token,
         user
