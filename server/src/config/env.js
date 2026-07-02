@@ -24,10 +24,42 @@ if (process.env.LOCATION_ENCRYPTION_KEY.length < 16) {
   throw new Error('LOCATION_ENCRYPTION_KEY must be at least 16 characters long.');
 }
 
+if ((process.env.SUPERADMIN_EMAIL && !process.env.SUPERADMIN_PASSWORD) || (!process.env.SUPERADMIN_EMAIL && process.env.SUPERADMIN_PASSWORD)) {
+  throw new Error('SUPERADMIN_EMAIL and SUPERADMIN_PASSWORD must be configured together.');
+}
+
+if (process.env.SUPERADMIN_PASSWORD && process.env.SUPERADMIN_PASSWORD.length < 12) {
+  throw new Error('SUPERADMIN_PASSWORD must be at least 12 characters long.');
+}
+
+function parseNumber(value, fallback, name) {
+  const parsed = Number(value ?? fallback);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`${name} must be a valid number.`);
+  }
+
+  return parsed;
+}
+
+function parseUrlList(value, fallback) {
+  const urls = (value ?? fallback)
+    .split(',')
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  if (!urls.length) {
+    throw new Error('CLIENT_URL must contain at least one allowed origin.');
+  }
+
+  return urls;
+}
+
 export const env = {
+  appName: process.env.APP_NAME?.trim() || 'SatyaShield',
+  apiVersion: process.env.API_VERSION?.trim() || 'v1',
   nodeEnv: process.env.NODE_ENV ?? 'development',
   host: process.env.HOST?.trim() || '0.0.0.0',
-  port: Number(process.env.PORT ?? 5000),
+  port: parseNumber(process.env.PORT, 5000, 'PORT'),
   mongoUri: process.env.MONGODB_URI,
   serverPublicUrl: process.env.SERVER_PUBLIC_URL?.trim() || '',
   uploadsDir: process.env.UPLOADS_DIR?.trim() || 'uploads',
@@ -38,11 +70,10 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
   adminEmail: process.env.ADMIN_EMAIL.toLowerCase(),
   adminPassword: process.env.ADMIN_PASSWORD,
-  clientUrls: (process.env.CLIENT_URL ?? 'http://localhost:5173')
-    .split(',')
-    .map((url) => url.trim())
-    .filter(Boolean),
-  bcryptSaltRounds: Number(process.env.BCRYPT_SALT_ROUNDS ?? 10),
+  superAdminEmail: process.env.SUPERADMIN_EMAIL?.toLowerCase() || '',
+  superAdminPassword: process.env.SUPERADMIN_PASSWORD || '',
+  clientUrls: parseUrlList(process.env.CLIENT_URL, 'http://localhost:5173'),
+  bcryptSaltRounds: parseNumber(process.env.BCRYPT_SALT_ROUNDS, 10, 'BCRYPT_SALT_ROUNDS'),
   openaiApiKey: process.env.OPENAI_API_KEY?.trim() ?? '',
   openaiModel: process.env.OPENAI_MODEL?.trim() || 'gpt-5-mini'
 };

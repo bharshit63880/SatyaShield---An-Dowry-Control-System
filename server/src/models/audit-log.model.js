@@ -36,7 +36,8 @@ const auditLogSchema = new mongoose.Schema(
         'chat_message_sent',
         'admin_action',
         'escalation_raised',
-        'escalation_resolved'
+        'escalation_resolved',
+        'api_request'
       ],
       index: true
     },

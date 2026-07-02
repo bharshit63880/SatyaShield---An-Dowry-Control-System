@@ -26,14 +26,16 @@ export async function ensureAdminUser() {
     });
   }
 
-  // SuperAdmin user
-  const superAdminEmail = 'superadmin@satyashield.gov.in';
-  const existingSuper = await User.findOne({ email: superAdminEmail });
+  if (!env.superAdminEmail || !env.superAdminPassword) {
+    return;
+  }
+
+  const existingSuper = await User.findOne({ email: env.superAdminEmail });
   if (!existingSuper) {
-    const passwordHash = await bcrypt.hash('SuperAdminPass123!', env.bcryptSaltRounds);
+    const passwordHash = await bcrypt.hash(env.superAdminPassword, env.bcryptSaltRounds);
     await User.create({
       name: 'Super Administrator',
-      email: superAdminEmail,
+      email: env.superAdminEmail,
       passwordHash,
       role: 'superadmin',
       isVerified: true

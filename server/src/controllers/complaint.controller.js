@@ -22,6 +22,8 @@ import { NGO } from '../models/ngo.model.js';
 import { Investigator } from '../models/investigator.model.js';
 import { decryptSensitiveValue } from '../utils/crypto.js';
 import { createAuditLog } from '../services/audit.service.js';
+import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
+import { buildPaginationMeta, parsePagination } from '../utils/query.js';
 
 function getMediaUrl(req, filename) {
   if (!filename) {
@@ -86,8 +88,7 @@ export const submitComplaint = asyncHandler(async (req, res) => {
       });
     }
 
-    res.status(201).json({
-      success: true,
+    return sendCreated(res, {
       message: 'Complaint submitted successfully.',
       data: {
         complaint: serializeComplaintForAdmin(complaint)
@@ -113,8 +114,8 @@ export const lookupComplaint = asyncHandler(async (req, res) => {
     throw new ApiError(404, 'No complaint found matching this tracking ID.');
   }
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'Complaint fetched successfully.',
     data: {
       complaint: serializeComplaintForAdmin(complaint)
     }
@@ -124,13 +125,21 @@ export const lookupComplaint = asyncHandler(async (req, res) => {
 // 3. Public Case Timeline History
 export const getComplaintTimeline = asyncHandler(async (req, res) => {
   const { anonymousId } = req.params;
-  const history = await CaseHistory.find({ complaintId: anonymousId })
+  const { page, limit, skip } = parsePagination({ page: req.query.page, limit: req.query.limit ?? 50 });
+  const [history, total] = await Promise.all([
+    CaseHistory.find({ complaintId: anonymousId })
     .sort({ createdAt: 1 })
-    .lean();
+      .skip(skip)
+      .limit(limit)
+    .lean(),
+    CaseHistory.countDocuments({ complaintId: anonymousId })
+  ]);
+  const pagination = buildPaginationMeta({ total, page, limit });
 
-  res.status(200).json({
-    success: true,
-    data: { history }
+  return sendSuccess(res, {
+    message: 'Complaint timeline fetched successfully.',
+    data: { history, pagination },
+    meta: { pagination }
   });
 });
 
@@ -197,8 +206,7 @@ export const uploadComplaintEvidence = asyncHandler(async (req, res) => {
       req
     });
 
-    res.status(201).json({
-      success: true,
+    return sendCreated(res, {
       message: 'Evidence uploaded securely.',
       data: { evidence }
     });
@@ -213,10 +221,17 @@ export const uploadComplaintEvidence = asyncHandler(async (req, res) => {
 // 5. Get evidence list
 export const getEvidenceList = asyncHandler(async (req, res) => {
   const { anonymousId } = req.params;
-  const evidenceList = await Evidence.find({ complaintId: anonymousId }).sort({ createdAt: -1 }).lean();
-  res.status(200).json({
-    success: true,
-    data: { evidenceList }
+  const { page, limit, skip } = parsePagination({ page: req.query.page, limit: req.query.limit ?? 50 });
+  const [evidenceList, total] = await Promise.all([
+    Evidence.find({ complaintId: anonymousId }).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+    Evidence.countDocuments({ complaintId: anonymousId })
+  ]);
+  const pagination = buildPaginationMeta({ total, page, limit });
+
+  return sendSuccess(res, {
+    message: 'Evidence fetched successfully.',
+    data: { evidenceList, pagination },
+    meta: { pagination }
   });
 });
 
@@ -261,8 +276,7 @@ export const escalateComplaint = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(201).json({
-    success: true,
+  return sendCreated(res, {
     message: 'Complaint escalated successfully.',
     data: { escalation }
   });
@@ -307,8 +321,7 @@ export const resolveEscalation = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
     message: 'Escalation resolved successfully.',
     data: { escalation }
   });
@@ -365,8 +378,8 @@ export const assignNgo = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'NGO assigned successfully.',
     data: { complaint: serializeComplaintForAdmin(complaint) }
   });
 });
@@ -392,8 +405,8 @@ export const assignInvestigator = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'Investigator assigned successfully.',
     data: { complaint: updated }
   });
 });

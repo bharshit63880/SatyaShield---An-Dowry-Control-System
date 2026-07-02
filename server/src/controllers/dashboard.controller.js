@@ -1,4 +1,5 @@
 import { Complaint } from '../models/complaint.model.js';
+import { env } from '../config/env.js';
 import { User } from '../models/user.model.js';
 import { NGO } from '../models/ngo.model.js';
 import { AuditLog } from '../models/audit-log.model.js';
@@ -14,6 +15,8 @@ import {
 } from '../services/complaint.service.js';
 import { countUnreadNotifications, listRecentNotifications } from '../services/notification.service.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+import { sendSuccess } from '../utils/apiResponse.js';
+import { buildPaginationMeta, escapeRegExp } from '../utils/query.js';
 
 export const getDashboardSummary = asyncHandler(async (req, res) => {
   const [
@@ -47,10 +50,10 @@ export const getDashboardSummary = asyncHandler(async (req, res) => {
       NGO.countDocuments()
     ]);
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'Dashboard summary fetched successfully.',
     data: {
-      appName: 'SatyaShield Operations Control',
+      appName: `${env.appName} Operations Control`,
       totalUsers,
       adminUsers,
       totalComplaints,
@@ -73,29 +76,33 @@ export const getDashboardSummary = asyncHandler(async (req, res) => {
 });
 
 export const getDashboardComplaints = asyncHandler(async (req, res) => {
-  const { status, riskLevel, search, page, limit } = req.query;
+  const filter = req.validated.complaintFilter;
 
   const result = await listComplaints({
-    status: status || 'all',
-    riskLevel: riskLevel || 'all',
-    search: search || '',
-    page: parseInt(page) || 1,
-    limit: parseInt(limit) || 10
+    status: filter.status,
+    riskLevel: filter.riskLevel,
+    assignedNgoId: filter.assignedNgoId,
+    assignedInvestigatorId: filter.assignedInvestigatorId,
+    search: filter.search,
+    page: filter.page,
+    limit: filter.limit,
+    skip: filter.skip,
+    sort: filter.sort
   });
 
-  res.status(200).json({
-    success: true,
-    data: result
+  return sendSuccess(res, {
+    message: 'Complaints fetched successfully.',
+    data: result,
+    meta: { pagination: result.pagination }
   });
 });
 
 export const updateDashboardComplaintStatus = asyncHandler(async (req, res) => {
-  const nextStatus = req.body.status;
+  const nextStatus = req.validated.complaintStatusUpdate.status;
 
   const complaint = await updateComplaintStatusByAnonymousId(req.params.anonymousId, nextStatus, req.user);
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
     message: 'Complaint status updated successfully.',
     data: {
       complaint
@@ -105,37 +112,68 @@ export const updateDashboardComplaintStatus = asyncHandler(async (req, res) => {
 
 // View system operations audit logs (Admin/SuperAdmin only)
 export const getAuditLogs = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 50 } = req.query;
-  const skip = (parseInt(page) - 1) * parseInt(limit);
+  const { page, limit, skip, search, action, role, sort } = req.validated.auditLogQuery;
+  const query = {};
 
-  const logs = await AuditLog.find()
-    .sort({ createdAt: -1 })
+  if (action) {
+    query.action = action;
+  }
+
+  if (role) {
+    query.role = role;
+  }
+
+  if (search) {
+    const regex = new RegExp(escapeRegExp(search), 'i');
+    query.$or = [{ userEmail: regex }, { action: regex }, { role: regex }, { ipAddress: regex }];
+  }
+
+  const [logs, total] = await Promise.all([
+    AuditLog.find(query)
+    .sort(sort)
     .skip(skip)
-    .limit(parseInt(limit))
-    .lean();
+    .limit(limit)
+    .lean(),
+    AuditLog.countDocuments(query)
+  ]);
 
-  const total = await AuditLog.countDocuments();
+  const pagination = buildPaginationMeta({ total, page, limit });
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'Audit logs fetched successfully.',
     data: {
       logs,
-      pagination: {
-        total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        pages: Math.ceil(total / limit)
-      }
-    }
+      pagination
+    },
+    meta: { pagination }
   });
 });
 
 // Get Escalations (Admin/SuperAdmin)
 export const getEscalations = asyncHandler(async (req, res) => {
-  const escalations = await Escalation.find().sort({ createdAt: -1 }).lean();
-  res.status(200).json({
-    success: true,
-    data: { escalations }
+  const { page, limit, skip, status, search, sort } = req.validated.escalationQuery;
+  const query = {};
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (search) {
+    const regex = new RegExp(escapeRegExp(search), 'i');
+    query.$or = [{ complaintId: regex }, { reason: regex }, { raisedByName: regex }, { raisedByRole: regex }];
+  }
+
+  const [escalations, total] = await Promise.all([
+    Escalation.find(query).sort(sort).skip(skip).limit(limit).lean(),
+    Escalation.countDocuments(query)
+  ]);
+
+  const pagination = buildPaginationMeta({ total, page, limit });
+
+  return sendSuccess(res, {
+    message: 'Escalations fetched successfully.',
+    data: { escalations, pagination },
+    meta: { pagination }
   });
 });
 
@@ -154,8 +192,8 @@ export const getDetailedAnalytics = asyncHandler(async (req, res) => {
   // Aggregate by district
   const districtStats = await getComplaintHeatmapData(50);
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'Detailed analytics fetched successfully.',
     data: {
       resolutionRate,
       ngoPerformance,

@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 
 import {
   submitComplaint,
@@ -10,20 +9,9 @@ import {
 } from '../controllers/complaint.controller.js';
 import { uploadComplaintMedia } from '../middlewares/upload.middleware.js';
 import { validateComplaintSubmission } from '../middlewares/validation.middleware.js';
+import { complaintSubmissionLimiter } from '../config/rate-limit.js';
 
 const router = Router();
-
-const complaintSubmissionLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 15,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    code: 'COMPLAINT_RATE_LIMITED',
-    message: 'Too many complaint requests from this client. Please try again later.'
-  }
-});
 
 // Intake
 router.post(

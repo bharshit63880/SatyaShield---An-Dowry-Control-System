@@ -6,6 +6,8 @@ import { Complaint } from '../models/complaint.model.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { createAuditLog } from '../services/audit.service.js';
+import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
+import { buildPaginationMeta, escapeRegExp } from '../utils/query.js';
 
 // Register NGO
 export const registerNgo = asyncHandler(async (req, res) => {
@@ -52,8 +54,7 @@ export const registerNgo = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(201).json({
-    success: true,
+  return sendCreated(res, {
     message: 'NGO registration submitted. Awaiting administrator review.',
     data: { ngo }
   });
@@ -100,8 +101,7 @@ export const reviewNgo = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
     message: `NGO successfully ${status}.`,
     data: { ngo }
   });
@@ -109,15 +109,32 @@ export const reviewNgo = asyncHandler(async (req, res) => {
 
 // List NGOs (filter by status)
 export const listNgos = asyncHandler(async (req, res) => {
-  const { status } = req.query;
+  const { page, limit, skip, status, city, district, search, sort } = req.validated.ngoListQuery;
   const query = {};
   if (status) {
     query.status = status;
   }
-  const ngos = await NGO.find(query).sort({ createdAt: -1 }).lean();
-  res.status(200).json({
-    success: true,
-    data: { ngos }
+  if (city) {
+    query.city = new RegExp(`^${escapeRegExp(city)}$`, 'i');
+  }
+  if (district) {
+    query.district = new RegExp(`^${escapeRegExp(district)}$`, 'i');
+  }
+  if (search) {
+    const regex = new RegExp(escapeRegExp(search), 'i');
+    query.$or = [{ name: regex }, { email: regex }, { city: regex }, { district: regex }];
+  }
+
+  const [ngos, total] = await Promise.all([
+    NGO.find(query).sort(sort).skip(skip).limit(limit).lean(),
+    NGO.countDocuments(query)
+  ]);
+  const pagination = buildPaginationMeta({ total, page, limit });
+
+  return sendSuccess(res, {
+    message: 'NGOs fetched successfully.',
+    data: { ngos, pagination },
+    meta: { pagination }
   });
 });
 
@@ -140,8 +157,8 @@ export const getNgoDashboard = asyncHandler(async (req, res) => {
     status: 'resolved'
   });
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'NGO dashboard fetched successfully.',
     data: {
       profile: ngo,
       metrics: {

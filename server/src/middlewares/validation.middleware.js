@@ -1,7 +1,8 @@
 import crypto from 'crypto';
 
-import { COMPLAINT_STATUSES } from '../models/complaint.model.js';
+import { COMPLAINT_RISK_LEVELS, COMPLAINT_STATUSES } from '../models/complaint.model.js';
 import { ApiError } from '../utils/ApiError.js';
+import { parsePagination, parseSearch, parseSort } from '../utils/query.js';
 
 function normalizeText(value, maxLength) {
   return String(value ?? '')
@@ -16,6 +17,15 @@ function parseBoolean(value) {
 
 function isEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
+function normalizeEnum(value, allowedValues, fallback = 'all') {
+  const normalized = normalizeText(value, 60) || fallback;
+  if (normalized !== 'all' && !allowedValues.includes(normalized)) {
+    return null;
+  }
+
+  return normalized;
 }
 
 function containsExactGps(value) {
@@ -132,9 +142,10 @@ export function validateComplaintSubmission(req, _res, next) {
 }
 
 export function validateDashboardComplaintFilter(req, _res, next) {
-  const status = normalizeText(req.query.status, 40) || 'all';
+  const status = normalizeEnum(req.query.status, COMPLAINT_STATUSES, 'all');
+  const riskLevel = normalizeEnum(req.query.riskLevel, COMPLAINT_RISK_LEVELS, 'all');
 
-  if (status !== 'all' && !COMPLAINT_STATUSES.includes(status)) {
+  if (!status) {
     return next(
       new ApiError(400, 'Invalid complaint status filter.', {
         code: 'COMPLAINT_INVALID_FILTER'
@@ -142,10 +153,45 @@ export function validateDashboardComplaintFilter(req, _res, next) {
     );
   }
 
+  if (!riskLevel) {
+    return next(
+      new ApiError(400, 'Invalid complaint risk filter.', {
+        code: 'COMPLAINT_INVALID_RISK_FILTER'
+      })
+    );
+  }
+
+  let sort;
+  try {
+    sort = parseSort(
+      req.query,
+      {
+        timestamp: 'timestamp',
+        createdAt: 'createdAt',
+        status: 'status',
+        riskLevel: 'riskLevel',
+        riskScore: 'riskScore'
+      },
+      '-timestamp'
+    );
+  } catch (error) {
+    return next(error);
+  }
+
+  const { page, limit, skip } = parsePagination(req.query);
+
   req.validated = {
     ...req.validated,
     complaintFilter: {
-      status
+      status,
+      riskLevel,
+      assignedNgoId: normalizeText(req.query.assignedNgoId, 120),
+      assignedInvestigatorId: normalizeText(req.query.assignedInvestigatorId, 120),
+      search: parseSearch(req.query),
+      page,
+      limit,
+      skip,
+      sort
     }
   };
   next();
@@ -166,6 +212,152 @@ export function validateDashboardComplaintStatusRequest(req, _res, next) {
     ...req.validated,
     complaintStatusUpdate: {
       status
+    }
+  };
+  next();
+}
+
+export function validateAuditLogQuery(req, _res, next) {
+  let sort;
+  try {
+    sort = parseSort(
+      req.query,
+      {
+        createdAt: 'createdAt',
+        action: 'action',
+        userEmail: 'userEmail',
+        role: 'role'
+      },
+      '-createdAt'
+    );
+  } catch (error) {
+    return next(error);
+  }
+
+  const { page, limit, skip } = parsePagination(req.query);
+
+  req.validated = {
+    ...req.validated,
+    auditLogQuery: {
+      page,
+      limit,
+      skip,
+      search: parseSearch(req.query),
+      action: normalizeText(req.query.action, 80),
+      role: normalizeText(req.query.role, 40),
+      sort
+    }
+  };
+  next();
+}
+
+export function validateEscalationQuery(req, _res, next) {
+  let sort;
+  try {
+    sort = parseSort(
+      req.query,
+      {
+        createdAt: 'createdAt',
+        status: 'status',
+        complaintId: 'complaintId'
+      },
+      '-createdAt'
+    );
+  } catch (error) {
+    return next(error);
+  }
+
+  const { page, limit, skip } = parsePagination(req.query);
+  const status = normalizeText(req.query.status, 40);
+
+  if (status && !['pending', 'resolved'].includes(status)) {
+    return next(new ApiError(400, 'Invalid escalation status filter.', { code: 'ESCALATION_INVALID_STATUS' }));
+  }
+
+  req.validated = {
+    ...req.validated,
+    escalationQuery: {
+      page,
+      limit,
+      skip,
+      status,
+      search: parseSearch(req.query),
+      sort
+    }
+  };
+  next();
+}
+
+export function validateNgoListQuery(req, _res, next) {
+  let sort;
+  try {
+    sort = parseSort(
+      req.query,
+      {
+        createdAt: 'createdAt',
+        name: 'name',
+        city: 'city',
+        district: 'district',
+        status: 'status'
+      },
+      '-createdAt'
+    );
+  } catch (error) {
+    return next(error);
+  }
+
+  const status = normalizeText(req.query.status, 40);
+  if (status && !['pending', 'approved', 'rejected'].includes(status)) {
+    return next(new ApiError(400, 'Invalid NGO status filter.', { code: 'NGO_INVALID_STATUS' }));
+  }
+
+  const { page, limit, skip } = parsePagination(req.query);
+
+  req.validated = {
+    ...req.validated,
+    ngoListQuery: {
+      page,
+      limit,
+      skip,
+      status,
+      city: normalizeText(req.query.city, 120),
+      district: normalizeText(req.query.district, 120),
+      search: parseSearch(req.query),
+      sort
+    }
+  };
+  next();
+}
+
+export function validateInvestigatorListQuery(req, _res, next) {
+  let sort;
+  try {
+    sort = parseSort(
+      req.query,
+      {
+        createdAt: 'createdAt',
+        name: 'name',
+        agency: 'agency',
+        badgeNumber: 'badgeNumber',
+        activeCasesCount: 'activeCasesCount'
+      },
+      'name'
+    );
+  } catch (error) {
+    return next(error);
+  }
+
+  const { page, limit, skip } = parsePagination(req.query);
+
+  req.validated = {
+    ...req.validated,
+    investigatorListQuery: {
+      page,
+      limit,
+      skip,
+      agency: normalizeText(req.query.agency, 120),
+      search: parseSearch(req.query),
+      sort
     }
   };
   next();
@@ -220,7 +412,7 @@ export function validateRegistrationRequest(req, _res, next) {
     return next(new ApiError(400, 'Password must be at least 8 characters long.', { code: 'AUTH_INVALID_PASSWORD_LENGTH' }));
   }
 
-  const allowedRoles = ['user', 'ngo', 'investigator', 'admin', 'superadmin'];
+  const allowedRoles = ['user'];
   if (!allowedRoles.includes(role)) {
     return next(new ApiError(400, 'Invalid registration role.', { code: 'AUTH_INVALID_ROLE' }));
   }
@@ -292,5 +484,3 @@ export function validateMfaEnableRequest(req, _res, next) {
   };
   next();
 }
-
-

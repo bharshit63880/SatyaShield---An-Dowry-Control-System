@@ -1,5 +1,4 @@
 import { Router } from 'express';
-import rateLimit from 'express-rate-limit';
 
 import {
   register,
@@ -25,20 +24,9 @@ import {
   validateMfaVerifyRequest,
   validateMfaEnableRequest
 } from '../middlewares/validation.middleware.js';
+import { authLimiter } from '../config/rate-limit.js';
 
 const router = Router();
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 10,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    success: false,
-    code: 'AUTH_RATE_LIMITED',
-    message: 'Too many authentication attempts. Please try again later.'
-  }
-});
 
 // Public auth endpoints
 router.post('/register', authLimiter, validateRegistrationRequest, register);

@@ -7,6 +7,7 @@ import dashboardRoutes from './dashboard.routes.js';
 import ngoRoutes from './ngo.routes.js';
 import investigatorRoutes from './investigator.routes.js';
 import chatRoutes from './chat.routes.js';
+import platformRoutes from './platform.routes.js';
 import { authenticate, requireStaff } from '../middlewares/auth.middleware.js';
 
 const router = Router();
@@ -25,6 +26,7 @@ router.use('/complaints', complaintRoutes);
 router.use('/ngos', ngoRoutes);
 router.use('/investigators', investigatorRoutes);
 router.use('/chat', chatRoutes);
+router.use('/platform', platformRoutes);
 
 // Protected Staff Dashboard
 router.use('/dashboard', authenticate, requireStaff, dashboardRoutes);

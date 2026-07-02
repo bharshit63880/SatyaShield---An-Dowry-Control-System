@@ -7,6 +7,8 @@ import { CaseHistory } from '../models/case-history.model.js';
 import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { createAuditLog } from '../services/audit.service.js';
+import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
+import { buildPaginationMeta, escapeRegExp } from '../utils/query.js';
 
 // Admin-only register investigator
 export const registerInvestigator = asyncHandler(async (req, res) => {
@@ -50,8 +52,7 @@ export const registerInvestigator = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(201).json({
-    success: true,
+  return sendCreated(res, {
     message: 'Investigator account created successfully.',
     data: { investigator }
   });
@@ -59,10 +60,28 @@ export const registerInvestigator = asyncHandler(async (req, res) => {
 
 // List Investigators
 export const listInvestigators = asyncHandler(async (req, res) => {
-  const investigators = await Investigator.find().sort({ name: 1 }).lean();
-  res.status(200).json({
-    success: true,
-    data: { investigators }
+  const { page, limit, skip, agency, search, sort } = req.validated.investigatorListQuery;
+  const query = {};
+
+  if (agency) {
+    query.agency = new RegExp(escapeRegExp(agency), 'i');
+  }
+
+  if (search) {
+    const regex = new RegExp(escapeRegExp(search), 'i');
+    query.$or = [{ name: regex }, { badgeNumber: regex }, { agency: regex }, { phone: regex }];
+  }
+
+  const [investigators, total] = await Promise.all([
+    Investigator.find(query).sort(sort).skip(skip).limit(limit).lean(),
+    Investigator.countDocuments(query)
+  ]);
+  const pagination = buildPaginationMeta({ total, page, limit });
+
+  return sendSuccess(res, {
+    message: 'Investigators fetched successfully.',
+    data: { investigators, pagination },
+    meta: { pagination }
   });
 });
 
@@ -82,8 +101,8 @@ export const getInvestigatorDashboard = asyncHandler(async (req, res) => {
   const activeCases = complaints.filter((c) => ['submitted', 'under-review'].includes(c.status)).length;
   const resolvedCases = complaints.filter((c) => c.status === 'resolved').length;
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'Investigator dashboard fetched successfully.',
     data: {
       profile: investigator,
       complaints,
@@ -129,8 +148,7 @@ export const addInvestigationNote = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(201).json({
-    success: true,
+  return sendCreated(res, {
     message: 'Investigation note added successfully.',
     data: { history }
   });

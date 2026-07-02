@@ -6,12 +6,13 @@ import {
   addInvestigationNote
 } from '../controllers/investigator.controller.js';
 import { authenticate, requireAdmin, requireInvestigator } from '../middlewares/auth.middleware.js';
+import { validateInvestigatorListQuery } from '../middlewares/validation.middleware.js';
 
 const router = Router();
 
 // Admin-only registration and listing
 router.post('/register', authenticate, requireAdmin, registerInvestigator);
-router.get('/', authenticate, requireAdmin, listInvestigators);
+router.get('/', authenticate, requireAdmin, validateInvestigatorListQuery, listInvestigators);
 
 // Investigator dashboard and case notes
 router.get('/dashboard', authenticate, requireInvestigator, getInvestigatorDashboard);

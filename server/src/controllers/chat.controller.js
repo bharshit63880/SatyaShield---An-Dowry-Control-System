@@ -4,6 +4,7 @@ import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { encryptSensitiveValue, decryptSensitiveValue } from '../utils/crypto.js';
 import { createAuditLog } from '../services/audit.service.js';
+import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
 
 // Verify access to complaint chat
 async function verifyChatAccess(complaintId, user = null) {
@@ -58,8 +59,8 @@ export const getChatMessages = asyncHandler(async (req, res) => {
     };
   });
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
+    message: 'Chat messages fetched successfully.',
     data: { messages: serialized }
   });
 });
@@ -99,8 +100,8 @@ export const sendChatMessage = asyncHandler(async (req, res) => {
     req
   });
 
-  res.status(201).json({
-    success: true,
+  return sendCreated(res, {
+    message: 'Chat message sent successfully.',
     data: {
       message: {
         id: message._id,
@@ -121,7 +122,7 @@ export const markChatAsRead = asyncHandler(async (req, res) => {
 
   if (!req.user) {
     // Victims don't need read-receipt markings on database userId level
-    return res.status(200).json({ success: true });
+    return sendSuccess(res, { message: 'Messages marked as read.' });
   }
 
   await ChatMessage.updateMany(
@@ -129,8 +130,7 @@ export const markChatAsRead = asyncHandler(async (req, res) => {
     { $push: { readBy: { userId: req.user.id, readAt: new Date() } } }
   );
 
-  res.status(200).json({
-    success: true,
+  return sendSuccess(res, {
     message: 'Messages marked as read.'
   });
 });

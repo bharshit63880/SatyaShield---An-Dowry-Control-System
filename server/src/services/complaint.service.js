@@ -6,6 +6,7 @@ import { analyzeComplaintRisk } from './complaint-risk.service.js';
 import { assignNgoForComplaint } from './ngo-router.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { decryptSensitiveValue, encryptSensitiveValue } from '../utils/crypto.js';
+import { buildPaginationMeta } from '../utils/query.js';
 
 function generateAnonymousId() {
   return `anon-${crypto.randomUUID()}`;
@@ -123,7 +124,9 @@ export async function listComplaints({
   assignedInvestigatorId,
   search,
   page = 1,
-  limit = 10
+  limit = 10,
+  skip = 0,
+  sort = { timestamp: -1 }
 }) {
   const query = {};
 
@@ -140,36 +143,29 @@ export async function listComplaints({
     query['assignedInvestigator.investigatorId'] = assignedInvestigatorId;
   }
 
-  // Fetch all matching records, decrypt them, filter by search query if applicable, and paginate
-  let complaints = await Complaint.find(query)
-    .select('+approximateLocationEncrypted +descriptionEncrypted')
-    .sort({ timestamp: -1 })
-    .lean();
-
-  let serialized = complaints.map(serializeComplaintForAdmin);
-
   if (search) {
-    const term = search.toLowerCase();
-    serialized = serialized.filter(
-      (c) =>
-        c.anonymousId.toLowerCase().includes(term) ||
-        c.description.toLowerCase().includes(term) ||
-        (c.approximateLocation && c.approximateLocation.toLowerCase().includes(term))
-    );
+    const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    query.$or = [
+      { anonymousId: { $regex: escapedSearch, $options: 'i' } },
+      { detectedKeywords: { $regex: escapedSearch, $options: 'i' } },
+      { 'assignedNgo.name': { $regex: escapedSearch, $options: 'i' } },
+      { 'assignedInvestigator.name': { $regex: escapedSearch, $options: 'i' } }
+    ];
   }
 
-  const total = serialized.length;
-  const startIndex = (page - 1) * limit;
-  const paginated = serialized.slice(startIndex, startIndex + limit);
+  const total = await Complaint.countDocuments(query);
+  let complaints = await Complaint.find(query)
+    .select('+approximateLocationEncrypted +descriptionEncrypted')
+    .sort(sort)
+    .skip(skip)
+    .limit(limit)
+    .lean();
+
+  const serialized = complaints.map(serializeComplaintForAdmin);
 
   return {
-    complaints: paginated,
-    pagination: {
-      total,
-      page,
-      limit,
-      pages: Math.ceil(total / limit)
-    }
+    complaints: serialized,
+    pagination: buildPaginationMeta({ total, page, limit })
   };
 }
 
