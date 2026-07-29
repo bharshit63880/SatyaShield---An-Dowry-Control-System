@@ -1,5 +1,3 @@
-import bcrypt from 'bcryptjs';
-import { env } from '../config/env.js';
 import { Investigator } from '../models/investigator.model.js';
 import { User } from '../models/user.model.js';
 import { Complaint } from '../models/complaint.model.js';
@@ -9,6 +7,11 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { createAuditLog } from '../services/audit.service.js';
 import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
 import { buildPaginationMeta, escapeRegExp } from '../utils/query.js';
+import { resolveStaffActor } from '../services/authorization.service.js';
+import { serializeComplaintForInvestigator } from '../services/complaint.service.js';
+import { serializeInvestigatorDirectoryEntry } from '../services/staff-serializer.service.js';
+import { hashPassword } from '../services/password.service.js';
+import { resendVerification } from '../services/auth.service.js';
 
 // Admin-only register investigator
 export const registerInvestigator = asyncHandler(async (req, res) => {
@@ -24,13 +27,13 @@ export const registerInvestigator = asyncHandler(async (req, res) => {
   }
 
   // Create Investigator User
-  const passwordHash = await bcrypt.hash(password, env.bcryptSaltRounds);
+  const passwordHash = await hashPassword(password);
   const user = await User.create({
     name,
     email: email.toLowerCase().trim(),
     passwordHash,
     role: 'investigator',
-    isVerified: true
+    isVerified: false
   });
 
   const investigator = await Investigator.create({
@@ -42,19 +45,23 @@ export const registerInvestigator = asyncHandler(async (req, res) => {
     assignedDistricts: assignedDistricts || [],
     assignedCities: assignedCities || []
   });
+  const delivery = await resendVerification(user.email, req);
 
   await createAuditLog({
     userId: req.user?.id || user.id,
     userEmail: req.user?.email || user.email,
     role: req.user?.role || 'admin',
     action: 'admin_action',
-    details: { msg: 'Investigator registered', badgeNumber, investigatorId: investigator.id },
+    details: { event: 'investigator_registered', badgeNumber },
     req
   });
 
   return sendCreated(res, {
     message: 'Investigator account created successfully.',
-    data: { investigator }
+    data: {
+      investigator: serializeInvestigatorDirectoryEntry(investigator),
+      deliveryState: delivery.deliveryState
+    }
   });
 });
 
@@ -80,20 +87,19 @@ export const listInvestigators = asyncHandler(async (req, res) => {
 
   return sendSuccess(res, {
     message: 'Investigators fetched successfully.',
-    data: { investigators, pagination },
+    data: { investigators: investigators.map(serializeInvestigatorDirectoryEntry), pagination },
     meta: { pagination }
   });
 });
 
 // Investigator dashboard and case list
 export const getInvestigatorDashboard = asyncHandler(async (req, res) => {
-  const investigator = await Investigator.findOne({ userId: req.user.id }).lean();
-  if (!investigator) {
-    throw new ApiError(404, 'Investigator profile not found for this account.');
-  }
+  const actor = await resolveStaffActor(req.user);
+  const investigator = actor.profile;
 
   // Fetch assigned complaints
   const complaints = await Complaint.find({ 'assignedInvestigator.investigatorId': req.user.id })
+    .select('+approximateLocationEncrypted +descriptionEncrypted')
     .sort({ timestamp: -1 })
     .lean();
 
@@ -104,8 +110,17 @@ export const getInvestigatorDashboard = asyncHandler(async (req, res) => {
   return sendSuccess(res, {
     message: 'Investigator dashboard fetched successfully.',
     data: {
-      profile: investigator,
-      complaints,
+      profile: {
+        name: investigator.name,
+        badgeNumber: investigator.badgeNumber,
+        agency: investigator.agency,
+        phone: investigator.phone,
+        assignedDistricts: investigator.assignedDistricts ?? [],
+        assignedCities: investigator.assignedCities ?? [],
+        isActive: investigator.isActive,
+        isEligible: investigator.isEligible
+      },
+      complaints: complaints.map(serializeComplaintForInvestigator),
       metrics: {
         totalAssigned,
         activeCases,
@@ -124,9 +139,10 @@ export const addInvestigationNote = asyncHandler(async (req, res) => {
     throw new ApiError(400, 'Investigation note content cannot be empty.');
   }
 
-  const complaint = await Complaint.findOne({ anonymousId }).lean();
-  if (!complaint) {
-    throw new ApiError(404, 'Complaint not found.');
+  if (!req.authorizedComplaint) {
+    throw new ApiError(403, 'You are not authorized to add notes to this complaint.', {
+      code: 'RESOURCE_ACCESS_DENIED'
+    });
   }
 
   // Create Case History Log
@@ -144,12 +160,19 @@ export const addInvestigationNote = asyncHandler(async (req, res) => {
     userEmail: req.user.email,
     role: req.user.role,
     action: 'case_edit',
-    details: { anonymousId, noteSnippet: note.slice(0, 50) },
+    details: { anonymousId, noteLength: note.length },
     req
   });
 
   return sendCreated(res, {
     message: 'Investigation note added successfully.',
-    data: { history }
+    data: {
+      history: {
+        action: history.action,
+        description: history.description,
+        actorRole: history.userRole,
+        createdAt: history.createdAt
+      }
+    }
   });
 });

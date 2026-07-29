@@ -1,4 +1,4 @@
-import { startTransition, useDeferredValue, useEffect, useState } from 'react';
+import { startTransition, useDeferredValue, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import {
   getDashboardComplaints,
@@ -17,9 +17,18 @@ import {
   sendChatMessageRequest,
   addInvestigationNoteRequest,
   getComplaintTimelineRequest,
+  getComplaintEvidenceRequest,
+  uploadComplaintEvidenceRequest,
+  downloadComplaintEvidenceRequest,
   getNgoDashboardRequest,
-  getInvestigatorDashboardRequest
+  getInvestigatorDashboardRequest,
+  acknowledgeNgoAssignmentRequest
+  ,getTriageHistoryRequest, reviewTriageRequest,
+  getSosQueueRequest, updateSosRequest
 } from '../services/api';
+import {
+  createCaseChatSocket, sendRealtimeMessage
+} from '../services/realtime-chat';
 
 export function DashboardPage() {
   const { token, user, logout } = useAuth();
@@ -31,6 +40,10 @@ export function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [triageHistory, setTriageHistory] = useState([]);
+  const [triageSeverity, setTriageSeverity] = useState('high');
+  const [triageReason, setTriageReason] = useState('new_information');
+  const [triageNote, setTriageNote] = useState('');
 
   // Search & Filter state
   const [statusFilter, setStatusFilter] = useState('all');
@@ -46,6 +59,7 @@ export function DashboardPage() {
   const [investigators, setInvestigators] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [escalations, setEscalations] = useState([]);
+  const [sosQueue, setSosQueue] = useState([]);
 
   // NGO & Investigator dashboard-specific states
   const [roleDashboardData, setRoleDashboardData] = useState(null);
@@ -54,17 +68,81 @@ export function DashboardPage() {
   const [activeCase, setActiveCase] = useState(null);
   const [activeCaseTimeline, setActiveCaseTimeline] = useState([]);
   const [chatMessages, setChatMessages] = useState([]);
+  const [activeCaseEvidence, setActiveCaseEvidence] = useState([]);
+  const [staffEvidenceFile, setStaffEvidenceFile] = useState(null);
+  const [downloadingEvidenceId, setDownloadingEvidenceId] = useState(null);
   const [chatInput, setChatInput] = useState('');
   const [investigationNoteInput, setInvestigationNoteInput] = useState('');
   const [isSendingChat, setIsSendingChat] = useState(false);
   const [isAddingNote, setIsAddingNote] = useState(false);
 
   // Modal actions (approvals / escalations)
-  const [escalationReason, setEscalationReason] = useState('');
+  const [escalationReason, setEscalationReason] = useState('administrative_review');
   const [ngoReviewNote, setNgoReviewNote] = useState('');
   const [resolutionNote, setResolutionNote] = useState('');
+  const [chatConnectionState, setChatConnectionState] = useState('closed');
+  const chatSocketRef = useRef(null);
 
   const deferredSearch = useDeferredValue(searchTerm);
+  const isAdministrator = user.role === 'admin' || user.role === 'superadmin';
+
+  function mergeChatMessage(message) {
+    setChatMessages((current) => {
+      if (current.some((item) =>
+        (message.messageId && item.messageId === message.messageId) ||
+        (message.sequence && item.sequence === message.sequence))) return current;
+      return [...current, message].sort((a, b) =>
+        (a.sequence || 0) - (b.sequence || 0));
+    });
+  }
+
+  useEffect(() => {
+    if (!token || !activeCase?.anonymousId) return undefined;
+    const socket = createCaseChatSocket({
+      credentialType: 'staff', token, caseId: activeCase.anonymousId,
+      afterSequence: chatMessages.at(-1)?.sequence || 0,
+      onMessage: mergeChatMessage,
+      onState: setChatConnectionState,
+      onRevoked: () => {
+        setChatConnectionState('access_revoked');
+        setErrorMsg('Real-time case access was revoked. Refresh your assigned case list.');
+      }
+    });
+    chatSocketRef.current = socket;
+    return () => {
+      socket.close();
+      if (chatSocketRef.current === socket) chatSocketRef.current = null;
+    };
+  }, [token, activeCase?.anonymousId]);
+
+  useEffect(() => {
+    if (!isAdministrator || adminTab !== 'sos') return;
+    getSosQueueRequest(token)
+      .then((response) => setSosQueue(response.data.requests))
+      .catch((error) => setErrorMsg(authorizationMessage(
+        error, 'The internal safety-request queue is unavailable.'
+      )));
+  }, [adminTab, isAdministrator, token]);
+
+  async function handleSosAcknowledge(item) {
+    try {
+      const response = await updateSosRequest(
+        token, item.caseId, item.sosId, {
+          version: item.version, action: 'acknowledge'
+        }
+      );
+      setSosQueue((current) => current.map((value) =>
+        value.sosId === item.sosId ? response.data.sos : value));
+    } catch (error) {
+      setErrorMsg(authorizationMessage(error, 'Safety-request acknowledgment failed.'));
+    }
+  }
+
+  function authorizationMessage(error, fallback) {
+    if (error?.status === 401) return 'Your session has expired. Sign in again.';
+    if (error?.status === 403) return 'You are signed in, but this role is not authorized for that resource.';
+    return error?.message || fallback;
+  }
 
   // Load directories and data based on Role
   useEffect(() => {
@@ -103,7 +181,7 @@ export function DashboardPage() {
         }
       } catch (err) {
         if (isMounted) {
-          setErrorMsg(err.message || 'Failed to initialize dashboard.');
+          setErrorMsg(authorizationMessage(err, 'Failed to initialize dashboard.'));
         }
       } finally {
         if (isMounted) {
@@ -140,7 +218,7 @@ export function DashboardPage() {
         }
       } catch (err) {
         if (isMounted) {
-          setErrorMsg(err.message || 'Failed to fetch complaints.');
+          setErrorMsg(authorizationMessage(err, 'Failed to fetch complaints.'));
         }
       }
     }
@@ -157,7 +235,8 @@ export function DashboardPage() {
     setErrorMsg('');
     setSuccessMsg('');
     try {
-      await reviewNgoRequest(token, id, status, ngoReviewNote);
+      const selected = ngos.find((ngo) => ngo.ngoId === id);
+      await reviewNgoRequest(token, id, status, ngoReviewNote, selected?.profileVersion);
       setSuccessMsg(`NGO successfully ${status}.`);
       setNgoReviewNote('');
       const ngoRes = await listNgosRequest(token);
@@ -168,12 +247,14 @@ export function DashboardPage() {
   }
 
   // Handle Case Escalation Resolution
-  async function handleResolveEscalation(id) {
+  async function handleResolveEscalation(escalation) {
     setErrorMsg('');
     setSuccessMsg('');
     try {
-      await resolveEscalationRequest(token, id, resolutionNote);
-      setSuccessMsg('Escalation resolved successfully.');
+      await resolveEscalationRequest(
+        token, escalation.escalationId, escalation.version, resolutionNote
+      );
+      setSuccessMsg('Internal workflow marked resolved.');
       setResolutionNote('');
       const escRes = await getEscalationsRequest(token);
       setEscalations(escRes.data.escalations);
@@ -196,6 +277,30 @@ export function DashboardPage() {
     }
   }
 
+  async function handleTriageReview(action) {
+    if (!activeCase?.triage?.assessmentId) return;
+    setErrorMsg('');
+    try {
+      await reviewTriageRequest(token, activeCase.anonymousId, {
+        assessmentId: activeCase.triage.assessmentId,
+        version: activeCase.triage.version,
+        previousSeverity: activeCase.triage.severity,
+        action,
+        severity: action === 'override' ? triageSeverity : undefined,
+        overrideCategory: action === 'override' ? triageReason : undefined,
+        note: action === 'override' ? triageNote : undefined
+      });
+      const history = await getTriageHistoryRequest(token, activeCase.anonymousId);
+      setTriageHistory(history.data.assessments);
+      setSuccessMsg('Triage review saved. Refresh the case list to use the latest version.');
+      setTriageNote('');
+    } catch (error) {
+      setErrorMsg(error.status === 409
+        ? 'This assessment changed while you were reviewing it. Refresh before trying again.'
+        : 'The triage review could not be saved.');
+    }
+  }
+
   // Handle Investigator assignment
   async function handleAssignInvestigator(anonymousId, investigatorId) {
     setErrorMsg('');
@@ -212,14 +317,19 @@ export function DashboardPage() {
   // Handle Escalating a complaint
   async function handleEscalateCase(e) {
     e.preventDefault();
-    if (!activeCase || !escalationReason) return;
+    if (!isAdministrator || !activeCase || !escalationReason) return;
     setErrorMsg('');
     try {
-      await escalateComplaintRequest(token, activeCase.anonymousId, escalationReason);
-      setSuccessMsg('Case escalated successfully.');
-      setEscalationReason('');
+      await escalateComplaintRequest(
+        token,
+        activeCase.anonymousId,
+        escalationReason,
+        crypto.randomUUID()
+      );
+      setSuccessMsg('Case added to internal review. This does not confirm external delivery.');
+      setEscalationReason('administrative_review');
       // Refresh timeline
-      const timelineRes = await getComplaintTimelineRequest(activeCase.anonymousId);
+      const timelineRes = await getComplaintTimelineRequest(activeCase.anonymousId, token);
       setActiveCaseTimeline(timelineRes.data.history);
     } catch (err) {
       setErrorMsg(err.message);
@@ -232,14 +342,55 @@ export function DashboardPage() {
     setSuccessMsg('');
     setActiveCase(c);
     try {
-      const [timelineRes, chatRes] = await Promise.all([
-        getComplaintTimelineRequest(c.anonymousId),
-        getChatMessagesRequest(token, c.anonymousId)
+      const [timelineRes, chatRes, evidenceRes] = await Promise.all([
+        getComplaintTimelineRequest(c.anonymousId, token),
+        getChatMessagesRequest(token, c.anonymousId),
+        getComplaintEvidenceRequest(c.anonymousId, token)
       ]);
       setActiveCaseTimeline(timelineRes.data.history);
       setChatMessages(chatRes.data.messages);
+      setActiveCaseEvidence(evidenceRes.data.evidenceList);
     } catch (err) {
-      setErrorMsg('Failed to load timeline or chat messages.');
+      setErrorMsg(authorizationMessage(err, 'Failed to load timeline or chat messages.'));
+    }
+  }
+
+  async function handleStaffEvidenceUpload(event) {
+    event.preventDefault();
+    if (!staffEvidenceFile || !activeCase) return;
+    const formData = new FormData();
+    formData.append('media', staffEvidenceFile);
+    try {
+      await uploadComplaintEvidenceRequest(activeCase.anonymousId, formData, token);
+      const response = await getComplaintEvidenceRequest(activeCase.anonymousId, token);
+      setActiveCaseEvidence(response.data.evidenceList);
+      setStaffEvidenceFile(null);
+      event.target.reset();
+    } catch (error) {
+      setErrorMsg(authorizationMessage(error, 'Evidence upload failed.'));
+    }
+  }
+
+  async function handleStaffEvidenceDownload(evidence) {
+    setDownloadingEvidenceId(evidence.evidenceId);
+    try {
+      const { blob } = await downloadComplaintEvidenceRequest(
+        activeCase.anonymousId,
+        evidence.evidenceId,
+        token
+      );
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = evidence.originalName || `evidence${evidence.detectedExtension || ''}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      setErrorMsg(authorizationMessage(error, 'Evidence is unavailable.'));
+    } finally {
+      setDownloadingEvidenceId(null);
     }
   }
 
@@ -249,8 +400,17 @@ export function DashboardPage() {
     if (!chatInput.trim() || !activeCase) return;
     setIsSendingChat(true);
     try {
-      const chatRes = await sendChatMessageRequest(token, activeCase.anonymousId, chatInput.trim());
-      setChatMessages((prev) => [...prev, chatRes.data.message]);
+      const clientMessageId = crypto.randomUUID();
+      const result = chatSocketRef.current?.connected
+        ? await sendRealtimeMessage(chatSocketRef.current, {
+          caseId: activeCase.anonymousId,
+          text: chatInput.trim(),
+          clientMessageId
+        })
+        : await sendChatMessageRequest(
+          token, activeCase.anonymousId, chatInput.trim(), { clientMessageId }
+        ).then((response) => ({ message: response.data.message }));
+      mergeChatMessage(result.message);
       setChatInput('');
     } catch (err) {
       setErrorMsg(err.message);
@@ -262,12 +422,12 @@ export function DashboardPage() {
   // Submit Investigation Note
   async function handleAddNote(e) {
     e.preventDefault();
-    if (!investigationNoteInput.trim() || !activeCase) return;
+    if (user.role !== 'investigator' || !investigationNoteInput.trim() || !activeCase) return;
     setIsAddingNote(true);
     try {
       await addInvestigationNoteRequest(token, activeCase.anonymousId, investigationNoteInput.trim());
       setInvestigationNoteInput('');
-      const timelineRes = await getComplaintTimelineRequest(activeCase.anonymousId);
+      const timelineRes = await getComplaintTimelineRequest(activeCase.anonymousId, token);
       setActiveCaseTimeline(timelineRes.data.history);
     } catch (err) {
       setErrorMsg(err.message);
@@ -278,7 +438,7 @@ export function DashboardPage() {
 
   // Update Case status
   async function handleStatusUpdate(status) {
-    if (!activeCase) return;
+    if (!isAdministrator || !activeCase) return;
     setErrorMsg('');
     try {
       const res = await updateDashboardComplaintStatusRequest(token, activeCase.anonymousId, status);
@@ -286,13 +446,25 @@ export function DashboardPage() {
       
       // Refresh complaints and timeline
       const [timelineRes, complRes] = await Promise.all([
-        getComplaintTimelineRequest(activeCase.anonymousId),
+        getComplaintTimelineRequest(activeCase.anonymousId, token),
         getDashboardComplaints(token, { status: statusFilter, riskLevel: riskFilter, page: currentPage })
       ]);
       setActiveCaseTimeline(timelineRes.data.history);
       setComplaints(complRes.data.complaints);
     } catch (err) {
       setErrorMsg(err.message);
+    }
+  }
+
+  async function handleAcknowledgeNgoAssignment() {
+    if (user.role !== 'ngo' || !activeCase) return;
+    setErrorMsg('');
+    try {
+      const response = await acknowledgeNgoAssignmentRequest(token, activeCase.anonymousId);
+      setActiveCase(response.data.complaint);
+      setSuccessMsg('Assignment acknowledged.');
+    } catch (err) {
+      setErrorMsg(authorizationMessage(err, 'Failed to acknowledge assignment.'));
     }
   }
 
@@ -304,7 +476,7 @@ export function DashboardPage() {
     
     complaints.forEach((c) => {
       const cleanDesc = c.description.replace(/"/g, '""');
-      csvContent += `"${c.anonymousId}","${c.status}","${c.riskLevel}","${c.timestamp}","${cleanDesc}","${c.assignedNgo?.name || 'None'}","${c.assignedInvestigator?.name || 'None'}"\n`;
+      csvContent += `"${c.anonymousId}","${c.status}","${c.triage?.severity || 'review_required'}","${c.timestamp}","${cleanDesc}","${c.assignedNgo?.name || 'None'}","${c.assignedInvestigator?.name || 'None'}"\n`;
     });
 
     const encodedUri = encodeURI(csvContent);
@@ -425,6 +597,7 @@ export function DashboardPage() {
             {[
               ['triage', '📋 Triage Queue'],
               ['ngos', '🤝 NGO Approvals'],
+              ['sos', 'SOS Safety Requests'],
               ['escalations', '🚨 Escalations'],
               ['audit', '📊 Audit Logs']
             ].map(([id, label]) => (
@@ -499,8 +672,9 @@ export function DashboardPage() {
                   >
                     <option value="all">All Risks</option>
                     <option value="low">Low Risk</option>
-                    <option value="medium">Medium Risk</option>
-                    <option value="high">High Risk</option>
+                    <option value="moderate">Moderate severity</option>
+                    <option value="high">High severity</option>
+                    <option value="critical">Critical severity</option>
                   </select>
                 </div>
 
@@ -550,10 +724,10 @@ export function DashboardPage() {
                           <td style={{ padding: '12px 14px' }}>
                             <span style={{
                               fontSize: '11px', fontWeight: '700',
-                              color: c.riskLevel === 'high' ? '#ef4444' :
-                                c.riskLevel === 'medium' ? '#f59e0b' : '#10b981'
+                              color: ['critical', 'high'].includes(c.triage?.severity) ? '#ef4444' :
+                                c.triage?.severity === 'moderate' ? '#f59e0b' : '#10b981'
                             }}>
-                              ● {c.riskLevel.toUpperCase()} ({c.riskScore})
+                              ● {(c.triage?.severity || 'review required').toUpperCase()}
                             </span>
                           </td>
                           <td style={{ padding: '12px 14px', fontSize: '12px', color: 'rgba(255,255,255,0.5)' }}>
@@ -620,7 +794,7 @@ export function DashboardPage() {
                         >
                           <option value="" disabled>Select NGO</option>
                           {ngos.map((ngo) => (
-                            <option key={ngo._id} value={ngo._id}>{ngo.name} ({ngo.district})</option>
+                            <option key={ngo.ngoId} value={ngo.ngoId}>{ngo.name} ({ngo.district})</option>
                           ))}
                         </select>
                       </label>
@@ -634,7 +808,7 @@ export function DashboardPage() {
                         >
                           <option value="" disabled>Select Investigator</option>
                           {investigators.map((inv) => (
-                            <option key={inv._id} value={inv.userId}>{inv.name} (Badge: {inv.badgeNumber})</option>
+                            <option key={inv.investigatorId} value={inv.investigatorId}>{inv.name} (Badge: {inv.badgeNumber})</option>
                           ))}
                         </select>
                       </label>
@@ -669,13 +843,13 @@ export function DashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-brand-100 text-sm">
                     {ngos.map((ngo) => (
-                      <tr key={ngo._id} className="hover:bg-brand-50/50">
+                      <tr key={ngo.ngoId} className="hover:bg-brand-50/50">
                         <td className="py-3 px-4 font-semibold text-brand-950">{ngo.name}</td>
                         <td className="py-3 px-4">{ngo.email}</td>
                         <td className="py-3 px-4">{ngo.district}</td>
                         <td className="py-3 px-4 font-bold text-xs uppercase text-orange-700">{ngo.status}</td>
                         <td className="py-3 px-4">
-                          {ngo.status === 'pending' ? (
+                          {['submitted', 'under_review'].includes(ngo.status) ? (
                             <input
                               type="text"
                               placeholder="Review justification note..."
@@ -688,16 +862,16 @@ export function DashboardPage() {
                           )}
                         </td>
                         <td className="py-3 px-4 flex items-center gap-2">
-                          {ngo.status === 'pending' && (
+                          {['submitted', 'under_review'].includes(ngo.status) && (
                             <>
                               <button
-                                onClick={() => handleNgoReview(ngo._id, 'approved')}
+                                onClick={() => handleNgoReview(ngo.ngoId, 'approved')}
                                 className="bg-emerald-600 text-white rounded-full px-3 py-1 text-xs font-bold hover:bg-emerald-700"
                               >
                                 Approve
                               </button>
                               <button
-                                onClick={() => handleNgoReview(ngo._id, 'rejected')}
+                                onClick={() => handleNgoReview(ngo.ngoId, 'rejected')}
                                 className="bg-rose-600 text-white rounded-full px-3 py-1 text-xs font-bold hover:bg-rose-700"
                               >
                                 Reject
@@ -713,19 +887,53 @@ export function DashboardPage() {
             </div>
           )}
 
-          {/* Tab 3: Escalation Inbox */}
+          {adminTab === 'sos' && (
+            <div className="surface-panel p-6 sm:p-8 space-y-6">
+              <h2 className="text-xl font-semibold text-brand-950">
+                Internal SOS safety-request queue
+              </h2>
+              <p className="text-sm text-brand-700">
+                This queue is internal. It is not police, ambulance, NGO, or emergency dispatch,
+                and acknowledgment does not guarantee physical assistance.
+              </p>
+              <div className="space-y-3">
+                {sosQueue.length ? sosQueue.map((item) => (
+                  <article key={item.sosId}
+                    className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                    <p className="font-mono text-xs text-brand-600">{item.caseId}</p>
+                    <p className="mt-1 font-semibold capitalize text-rose-950">
+                      {item.state.replaceAll('_', ' ')}
+                    </p>
+                    <p className="mt-2 text-xs text-brand-600">{item.statusNotice}</p>
+                    {['routed_internal', 'delivery_unavailable'].includes(item.state) ? (
+                      <button type="button" className="button-primary mt-3"
+                        onClick={() => handleSosAcknowledge(item)}>
+                        Acknowledge internally
+                      </button>
+                    ) : null}
+                  </article>
+                )) : (
+                  <p className="text-sm text-brand-600">No active internal safety requests.</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Escalation Inbox */}
           {adminTab === 'escalations' && (
             <div className="surface-panel p-6 sm:p-8 space-y-6">
-              <h2 className="text-xl font-semibold text-brand-950">Escalation Center</h2>
-              <p className="text-sm text-brand-700">View cases flagged for immediate Admin oversight.</p>
+              <h2 className="text-xl font-semibold text-brand-950">Internal workflow queue</h2>
+              <p className="text-sm text-brand-700">
+                These are internal review targets, not guaranteed response times or emergency dispatch.
+              </p>
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse">
                   <thead>
                     <tr className="border-b border-brand-100 text-xs font-bold text-brand-600 uppercase">
                       <th className="py-3 px-4">Case ID</th>
-                      <th className="py-3 px-4">Reason for Escalation</th>
-                      <th className="py-3 px-4">Raised By</th>
+                      <th className="py-3 px-4">Level</th>
+                      <th className="py-3 px-4">Trigger</th>
                       <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4">Resolution Note</th>
                       <th className="py-3 px-4">Action</th>
@@ -733,28 +941,36 @@ export function DashboardPage() {
                   </thead>
                   <tbody className="divide-y divide-brand-100 text-sm">
                     {escalations.map((esc) => (
-                      <tr key={esc._id} className="hover:bg-brand-50/50">
+                      <tr key={esc.escalationId} className="hover:bg-brand-50/50">
                         <td className="py-3 px-4 font-mono font-medium">{esc.complaintId}</td>
-                        <td className="py-3 px-4 text-brand-950 font-medium">{esc.reason}</td>
-                        <td className="py-3 px-4 text-xs">{esc.raisedByName} ({esc.raisedByRole.toUpperCase()})</td>
+                        <td className="py-3 px-4 text-brand-950 font-medium">
+                          {String(esc.level).replaceAll('_', ' ')}
+                        </td>
+                        <td className="py-3 px-4 text-xs">
+                          {String(esc.triggerCategory).replaceAll('_', ' ')}
+                        </td>
                         <td className="py-3 px-4 font-bold text-xs uppercase text-rose-700">{esc.status}</td>
                         <td className="py-3 px-4">
                           {esc.status === 'pending' ? (
                             <input
                               type="text"
-                              placeholder="Describe resolution action..."
+                              placeholder="Optional private operational note"
                               value={resolutionNote}
                               onChange={(e) => setResolutionNote(e.target.value)}
                               className="field-input py-1 text-xs"
                             />
                           ) : (
-                            <span className="text-xs text-brand-600">{esc.resolution || 'No note'}</span>
+                            <span className="text-xs text-brand-600">
+                              {esc.resolutionCategory
+                                ? String(esc.resolutionCategory).replaceAll('_', ' ')
+                                : 'No private note exposed'}
+                            </span>
                           )}
                         </td>
                         <td className="py-3 px-4">
                           {esc.status === 'pending' && (
                             <button
-                              onClick={() => handleResolveEscalation(esc._id)}
+                              onClick={() => handleResolveEscalation(esc)}
                               className="bg-emerald-600 text-white rounded-full px-3 py-1 text-xs font-bold hover:bg-emerald-700"
                             >
                               Resolve
@@ -787,14 +1003,14 @@ export function DashboardPage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-brand-100 text-xs font-mono">
-                    {auditLogs.map((log) => (
-                      <tr key={log._id} className="hover:bg-brand-50/50">
+                    {auditLogs.map((log, auditIndex) => (
+                      <tr key={`${log.createdAt}-${auditIndex}`} className="hover:bg-brand-50/50">
                         <td className="py-2 px-4">{new Date(log.createdAt).toLocaleString()}</td>
-                        <td className="py-2 px-4 font-semibold text-brand-900">{log.userEmail}</td>
+                        <td className="py-2 px-4 font-semibold text-brand-900">{log.actorCategory}</td>
                         <td className="py-2 px-4 uppercase">{log.role}</td>
                         <td className="py-2 px-4 font-semibold text-teal-700">{log.action}</td>
-                        <td className="py-2 px-4 truncate max-w-[200px]" title={log.userAgent}>
-                          {log.ipAddress} &bull; {log.userAgent}
+                        <td className="py-2 px-4 truncate max-w-[200px]" title={log.resourceType}>
+                          {log.resourceType} &bull; {log.outcome}
                         </td>
                       </tr>
                     ))}
@@ -833,7 +1049,9 @@ export function DashboardPage() {
                           {c.status}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-semibold text-rose-700">{c.riskLevel.toUpperCase()} ({c.riskScore})</td>
+                      <td className="py-3 px-4 font-semibold text-rose-700">
+                        {(c.triage?.severity || 'review required').toUpperCase()}
+                      </td>
                       <td className="py-3 px-4">
                         <button
                           onClick={() => handleSelectCase(c)}
@@ -888,7 +1106,12 @@ export function DashboardPage() {
               </h2>
             </div>
             <button
-              onClick={() => setActiveCase(null)}
+              onClick={() => {
+                setActiveCase(null);
+                setActiveCaseTimeline([]);
+                setActiveCaseEvidence([]);
+                setChatMessages([]);
+              }}
               className="text-xs font-semibold bg-brand-100 text-brand-800 hover:bg-brand-200 px-3 py-1 rounded-full"
             >
               Close Workspace
@@ -900,18 +1123,43 @@ export function DashboardPage() {
             <div className="space-y-6">
               {/* Triage Analytics */}
               <div className="rounded-2xl border border-brand-100 bg-brand-50/50 p-4 space-y-3">
-                <h4 className="font-bold text-brand-950 text-sm">AI Risk Assessment</h4>
+                <h4 className="font-bold text-brand-950 text-sm">Case Risk Assessment</h4>
                 <p className="text-xs text-brand-800">
-                  <span className="font-semibold">Threat Level:</span> {activeCase.riskLevel.toUpperCase()} (Score: {activeCase.riskScore})
+                  <span className="font-semibold">Triage severity:</span> {(activeCase.triage?.severity || 'review required').toUpperCase()}
                 </p>
                 <p className="text-xs text-brand-800">
-                  <span className="font-semibold">Threat Summary:</span> {activeCase.threatSummary}
+                  <span className="font-semibold">Review state:</span> {activeCase.triage?.reviewState || 'review_required'}
                 </p>
-                <p className="text-xs text-brand-800">
-                  <span className="font-semibold">Action Recommendation:</span> {activeCase.escalationRecommendation}
-                </p>
+                {isAdministrator && activeCase.triage?.assessmentId ? <div className="mt-4 space-y-3 rounded-xl border border-brand-200 p-4">
+                  <p className="text-sm font-semibold">Human triage review</p>
+                  <button className="button-secondary" onClick={() => handleTriageReview('confirm')}>
+                    Confirm current severity
+                  </button>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <select className="field-input" value={triageSeverity} onChange={(e) => setTriageSeverity(e.target.value)}>
+                      <option value="low">Low</option><option value="moderate">Moderate</option>
+                      <option value="high">High</option><option value="critical">Critical</option>
+                    </select>
+                    <select className="field-input" value={triageReason} onChange={(e) => setTriageReason(e.target.value)}>
+                      <option value="new_information">New information</option>
+                      <option value="reporter_clarification">Reporter clarification</option>
+                      <option value="incorrect_structured_input">Incorrect structured input</option>
+                      <option value="policy_misclassification">Policy misclassification</option>
+                      <option value="danger_no_longer_current">Danger no longer current</option>
+                      <option value="insufficient_information">Insufficient information</option>
+                    </select>
+                  </div>
+                  <textarea className="field-input" value={triageNote}
+                    onChange={(e) => setTriageNote(e.target.value)}
+                    placeholder="Required bounded internal justification for an override" maxLength={1000} />
+                  <button className="button-primary" disabled={!triageNote.trim()}
+                    onClick={() => handleTriageReview('override')}>Save override</button>
+                  {triageHistory.length ? <p className="text-xs text-brand-600">
+                    Assessment history versions: {triageHistory.map((item) => item.version).join(', ')}
+                  </p> : null}
+                </div> : null}
 
-                <div className="flex flex-wrap gap-2 pt-2">
+                {(isAdministrator || user.role === 'investigator') && <div className="flex flex-wrap gap-2 pt-2">
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${activeCase.indicators?.dowryHarassment ? 'bg-red-100 text-red-800' : 'bg-brand-100 text-brand-600'}`}>
                     Dowry Harassment: {activeCase.indicators?.dowryHarassment ? 'DETECTED' : 'CLEARED'}
                   </span>
@@ -921,11 +1169,16 @@ export function DashboardPage() {
                   <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${activeCase.indicators?.domesticViolence ? 'bg-red-100 text-red-800' : 'bg-brand-100 text-brand-600'}`}>
                     Domestic Violence: {activeCase.indicators?.domesticViolence ? 'DETECTED' : 'CLEARED'}
                   </span>
-                </div>
+                </div>}
               </div>
 
               {/* Status Update selectors */}
-              <div className="flex flex-wrap gap-2 items-center">
+              {user.role === 'ngo' && !activeCase.assignedNgo?.acknowledgedAt && (
+                <button type="button" onClick={handleAcknowledgeNgoAssignment} className="button-primary px-4 py-2 text-xs">
+                  Acknowledge Assignment
+                </button>
+              )}
+              {isAdministrator && <div className="flex flex-wrap gap-2 items-center">
                 <span className="text-xs font-semibold text-brand-800">Update Status:</span>
                 {['submitted', 'under-review', 'resolved', 'rejected'].map((st) => (
                   <button
@@ -938,23 +1191,29 @@ export function DashboardPage() {
                     {st.toUpperCase()}
                   </button>
                 ))}
-              </div>
+              </div>}
 
-              {/* Escalation Trigger form (NGO/Investigator to raise to admin) */}
-              {user.role !== 'admin' && user.role !== 'superadmin' && (
+              {/* Structured internal workflow request */}
+              {isAdministrator && (
                 <form onSubmit={handleEscalateCase} className="p-4 rounded-2xl border border-rose-100 bg-rose-50/50 space-y-3">
-                  <h4 className="font-bold text-rose-950 text-sm">Escalate Case to Admin</h4>
-                  <input
-                    required
-                    type="text"
-                    placeholder="Provide justification for immediate escalation..."
+                  <h4 className="font-bold text-rose-950 text-sm">Request additional internal review</h4>
+                  <select
                     value={escalationReason}
                     onChange={(e) => setEscalationReason(e.target.value)}
                     className="field-input py-1.5 text-xs bg-white"
-                  />
+                  >
+                    <option value="administrative_review">Administrative review</option>
+                    <option value="new_information">New information</option>
+                    <option value="assignment_attention">Assignment attention</option>
+                    <option value="human_review_requested">Human review requested</option>
+                    <option value="unresolved_case">Unresolved case follow-up</option>
+                  </select>
                   <button type="submit" className="bg-rose-700 text-white rounded-full px-4 py-2 text-xs font-bold hover:bg-rose-800">
-                    Submit Urgent Escalation
+                    Add to internal workflow
                   </button>
+                  <p className="text-xs text-rose-800">
+                    This does not contact emergency services or guarantee a response time.
+                  </p>
                 </form>
               )}
 
@@ -964,10 +1223,10 @@ export function DashboardPage() {
                 
                 {/* Notes list */}
                 <div className="space-y-3 max-h-[200px] overflow-y-auto pr-1">
-                  {activeCaseTimeline.map((item) => (
-                    <div key={item._id} className="text-xs bg-white border border-brand-100 p-2.5 rounded-xl">
+                  {activeCaseTimeline.map((item, timelineIndex) => (
+                    <div key={`${item.createdAt}-${item.action}-${timelineIndex}`} className="text-xs bg-white border border-brand-100 p-2.5 rounded-xl">
                       <p className="text-brand-500 font-medium">
-                        {new Date(item.createdAt).toLocaleString()} &bull; {item.userName} ({item.userRole.toUpperCase()})
+                        {new Date(item.createdAt).toLocaleString()} &bull; {item.actorName} ({item.actorRole.toUpperCase()})
                       </p>
                       <p className="mt-1 text-brand-900 font-semibold">{item.action.replace('_', ' ').toUpperCase()}</p>
                       <p className="mt-1 text-brand-700">{item.description}</p>
@@ -976,7 +1235,7 @@ export function DashboardPage() {
                 </div>
 
                 {/* Add note form */}
-                <form onSubmit={handleAddNote} className="flex gap-2">
+                {user.role === 'investigator' && <form onSubmit={handleAddNote} className="flex gap-2">
                   <input
                     required
                     type="text"
@@ -992,6 +1251,28 @@ export function DashboardPage() {
                   >
                     {isAddingNote ? 'Saving...' : 'Add Note'}
                   </button>
+                </form>}
+              </div>
+
+              <div className="space-y-3 border-t border-brand-100 pt-4">
+                <h4 className="font-bold text-brand-950 text-sm">Private Evidence Vault</h4>
+                {activeCaseEvidence.map((evidence) => (
+                  <div key={evidence.evidenceId || `${evidence.createdAt}-${evidence.originalName}`} className="rounded-xl border border-brand-100 bg-white p-3 text-xs">
+                    <p className="font-semibold text-brand-900">{evidence.originalName}</p>
+                    <p className="capitalize text-brand-600">
+                      {evidence.lifecycleStatus.replaceAll('_', ' ')}
+                      {evidence.scanStatus === 'not_configured' ? ' · scanning not configured' : ''}
+                    </p>
+                    {evidence.lifecycleStatus === 'available' && evidence.downloadPath && (
+                      <button type="button" onClick={() => handleStaffEvidenceDownload(evidence)} className="button-secondary mt-2 px-3 py-1 text-xs">
+                        {downloadingEvidenceId === evidence.evidenceId ? 'Downloading...' : 'Authorized download'}
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <form onSubmit={handleStaffEvidenceUpload} className="flex gap-2">
+                  <input type="file" required accept=".jpg,.jpeg,.png,.webp" onChange={(event) => setStaffEvidenceFile(event.target.files?.[0] || null)} className="block w-full text-xs" />
+                  <button type="submit" disabled={!staffEvidenceFile} className="button-primary px-3 py-1 text-xs">Upload</button>
                 </form>
               </div>
             </div>
@@ -1004,12 +1285,16 @@ export function DashboardPage() {
               </div>
 
               {/* Messages area */}
+              <p className="text-xs text-brand-600" aria-live="polite">
+                Real-time connection: {chatConnectionState.replaceAll('_', ' ')}.
+                Messages are persisted before broadcast; delivery is not guaranteed.
+              </p>
               <div className="flex-1 overflow-y-auto my-3 space-y-3 pr-1">
-                {chatMessages.map((msg) => {
+                {chatMessages.map((msg, messageIndex) => {
                   const isOwnMessage = msg.senderRole === user.role;
                   return (
                     <div
-                      key={msg.id}
+                      key={`${msg.createdAt}-${messageIndex}`}
                       className={`flex flex-col max-w-[85%] ${isOwnMessage ? 'ml-auto items-end' : 'mr-auto items-start'}`}
                     >
                       <span className="text-[9px] text-brand-600 uppercase mb-0.5 px-1">

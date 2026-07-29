@@ -17,6 +17,11 @@ import { countUnreadNotifications, listRecentNotifications } from '../services/n
 import { asyncHandler } from '../utils/asyncHandler.js';
 import { sendSuccess } from '../utils/apiResponse.js';
 import { buildPaginationMeta, escapeRegExp } from '../utils/query.js';
+import {
+  serializeAuditLogForAdmin,
+  serializeEscalationForAdmin,
+  serializeNotificationForAdmin
+} from '../services/staff-serializer.service.js';
 
 export const getDashboardSummary = asyncHandler(async (req, res) => {
   const [
@@ -66,7 +71,7 @@ export const getDashboardSummary = asyncHandler(async (req, res) => {
       complaintTrend,
       complaintHeatmap,
       unreadNotifications,
-      recentNotifications,
+      recentNotifications: recentNotifications.map(serializeNotificationForAdmin),
       recentComplaints,
       escalationCount,
       ngoCount,
@@ -79,6 +84,7 @@ export const getDashboardComplaints = asyncHandler(async (req, res) => {
   const filter = req.validated.complaintFilter;
 
   const result = await listComplaints({
+    user: req.user,
     status: filter.status,
     riskLevel: filter.riskLevel,
     assignedNgoId: filter.assignedNgoId,
@@ -120,12 +126,12 @@ export const getAuditLogs = asyncHandler(async (req, res) => {
   }
 
   if (role) {
-    query.role = role;
+    query.actorCategory = role;
   }
 
   if (search) {
     const regex = new RegExp(escapeRegExp(search), 'i');
-    query.$or = [{ userEmail: regex }, { action: regex }, { role: regex }, { ipAddress: regex }];
+    query.$or = [{ action: regex }, { actorCategory: regex }, { resourceType: regex }, { resourceRef: regex }];
   }
 
   const [logs, total] = await Promise.all([
@@ -142,7 +148,7 @@ export const getAuditLogs = asyncHandler(async (req, res) => {
   return sendSuccess(res, {
     message: 'Audit logs fetched successfully.',
     data: {
-      logs,
+      logs: logs.map(serializeAuditLogForAdmin),
       pagination
     },
     meta: { pagination }
@@ -158,10 +164,7 @@ export const getEscalations = asyncHandler(async (req, res) => {
     query.status = status;
   }
 
-  if (search) {
-    const regex = new RegExp(escapeRegExp(search), 'i');
-    query.$or = [{ complaintId: regex }, { reason: regex }, { raisedByName: regex }, { raisedByRole: regex }];
-  }
+  if (search) query.complaintId = new RegExp(escapeRegExp(search), 'i');
 
   const [escalations, total] = await Promise.all([
     Escalation.find(query).sort(sort).skip(skip).limit(limit).lean(),
@@ -172,7 +175,7 @@ export const getEscalations = asyncHandler(async (req, res) => {
 
   return sendSuccess(res, {
     message: 'Escalations fetched successfully.',
-    data: { escalations, pagination },
+    data: { escalations: escalations.map(serializeEscalationForAdmin), pagination },
     meta: { pagination }
   });
 });
@@ -196,7 +199,10 @@ export const getDetailedAnalytics = asyncHandler(async (req, res) => {
     message: 'Detailed analytics fetched successfully.',
     data: {
       resolutionRate,
-      ngoPerformance,
+      ngoPerformance: ngoPerformance.map((ngo) => ({
+        name: ngo.name,
+        metrics: ngo.metrics ?? {}
+      })),
       districtStats,
       totalCases,
       escalationRate: totalCases > 0 ? Math.round(((await Escalation.countDocuments()) / totalCases) * 100) : 0

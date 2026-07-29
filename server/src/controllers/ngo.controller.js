@@ -1,5 +1,3 @@
-import bcrypt from 'bcryptjs';
-import { env } from '../config/env.js';
 import { NGO } from '../models/ngo.model.js';
 import { User } from '../models/user.model.js';
 import { Complaint } from '../models/complaint.model.js';
@@ -8,6 +6,47 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { createAuditLog } from '../services/audit.service.js';
 import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
 import { buildPaginationMeta, escapeRegExp } from '../utils/query.js';
+import { resolveStaffActor } from '../services/authorization.service.js';
+import { serializeComplaintForNGO } from '../services/complaint.service.js';
+import { serializeNgoDirectoryEntry } from '../services/staff-serializer.service.js';
+import { hashPassword } from '../services/password.service.js';
+import { resendVerification } from '../services/auth.service.js';
+import { NgoAssignment } from '../models/ngo-assignment.model.js';
+
+export const acknowledgeNgoAssignment = asyncHandler(async (req, res) => {
+  const { anonymousId } = req.params;
+  const acknowledgedAt = new Date();
+  const complaint = await Complaint.findOneAndUpdate(
+    {
+      anonymousId,
+      'assignedNgo.ngoId': req.staffActor.ngoId
+    },
+    { $set: { 'assignedNgo.acknowledgedAt': acknowledgedAt } },
+    { new: true }
+  )
+    .select('+approximateLocationEncrypted +descriptionEncrypted')
+    .lean();
+
+  if (!complaint) {
+    throw new ApiError(403, 'You are not authorized to perform this action.', {
+      code: 'RESOURCE_ACCESS_DENIED'
+    });
+  }
+
+  await createAuditLog({
+    userId: req.user.id,
+    userEmail: req.user.email,
+    role: req.user.role,
+    action: 'assignment_acknowledged',
+    details: { anonymousId },
+    req
+  });
+
+  return sendSuccess(res, {
+    message: 'Assignment acknowledged successfully.',
+    data: { complaint: serializeComplaintForNGO(complaint) }
+  });
+});
 
 // Register NGO
 export const registerNgo = asyncHandler(async (req, res) => {
@@ -23,12 +62,12 @@ export const registerNgo = asyncHandler(async (req, res) => {
   }
 
   // Create pending User
-  const passwordHash = await bcrypt.hash(password, env.bcryptSaltRounds);
+  const passwordHash = await hashPassword(password);
   const user = await User.create({
     name,
     email: email.toLowerCase().trim(),
     passwordHash,
-    role: 'user', // remains simple user until approved
+    role: 'ngo',
     isVerified: false
   });
 
@@ -44,19 +83,20 @@ export const registerNgo = asyncHandler(async (req, res) => {
     status: 'pending',
     userId: user.id
   });
+  const delivery = await resendVerification(user.email, req);
 
   await createAuditLog({
     userId: user.id,
     userEmail: user.email,
     role: 'guest',
     action: 'admin_action',
-    details: { msg: 'NGO registered (pending approval)', ngoId: ngo.id },
+    details: { event: 'ngo_registration_submitted' },
     req
   });
 
   return sendCreated(res, {
     message: 'NGO registration submitted. Awaiting administrator review.',
-    data: { ngo }
+    data: { ngo: serializeNgoDirectoryEntry(ngo), deliveryState: delivery.deliveryState }
   });
 });
 
@@ -82,12 +122,14 @@ export const reviewNgo = asyncHandler(async (req, res) => {
   };
   await ngo.save();
 
-  // If approved, update corresponding user's role to 'ngo' and verify
+  // Approval and email verification are independent gates.
   if (status === 'approved' && ngo.userId) {
     const user = await User.findById(ngo.userId);
     if (user) {
-      user.role = 'ngo';
-      user.isVerified = true;
+      if (user.role !== 'ngo') {
+        user.role = 'ngo';
+        user.authVersion += 1;
+      }
       await user.save();
     }
   }
@@ -97,13 +139,13 @@ export const reviewNgo = asyncHandler(async (req, res) => {
     userEmail: req.user.email,
     role: req.user.role,
     action: 'admin_action',
-    details: { msg: `NGO status set to ${status}`, ngoId: id, notes },
+    details: { event: 'ngo_reviewed', status, notesLength: notes?.length ?? 0 },
     req
   });
 
   return sendSuccess(res, {
     message: `NGO successfully ${status}.`,
-    data: { ngo }
+    data: { ngo: serializeNgoDirectoryEntry(ngo) }
   });
 });
 
@@ -133,34 +175,47 @@ export const listNgos = asyncHandler(async (req, res) => {
 
   return sendSuccess(res, {
     message: 'NGOs fetched successfully.',
-    data: { ngos, pagination },
+    data: { ngos: ngos.map(serializeNgoDirectoryEntry), pagination },
     meta: { pagination }
   });
 });
 
 // NGO Analytics dashboard
 export const getNgoDashboard = asyncHandler(async (req, res) => {
-  // Find NGO corresponding to active user
-  const ngo = await NGO.findOne({ userId: req.user.id }).lean();
-  if (!ngo) {
-    throw new ApiError(404, 'NGO profile not found for this account.');
-  }
+  const actor = await resolveStaffActor(req.user);
+  const ngo = actor.profile;
 
-  // Count assigned complaints
-  const totalAssigned = await Complaint.countDocuments({ 'assignedNgo.ngoId': ngo.id || ngo._id.toString() });
+  const currentAssignments = await NgoAssignment.find({
+    ngoPublicId: actor.ngoId, isCurrent: true, state: { $in: ['acknowledged', 'active'] }
+  }).select('complaintId -_id').lean();
+  const complaintIds = currentAssignments.map((item) => item.complaintId);
+  const totalAssigned = complaintIds.length;
   const openCases = await Complaint.countDocuments({
-    'assignedNgo.ngoId': ngo.id || ngo._id.toString(),
-    status: { $in: ['submitted', 'under-review'] }
+    anonymousId: { $in: complaintIds }, status: { $in: ['submitted', 'under-review'] }
   });
   const resolvedCases = await Complaint.countDocuments({
-    'assignedNgo.ngoId': ngo.id || ngo._id.toString(),
-    status: 'resolved'
+    anonymousId: { $in: complaintIds }, status: 'resolved'
   });
+  const complaints = await Complaint.find({ anonymousId: { $in: complaintIds } })
+    .select('+approximateLocationEncrypted +descriptionEncrypted')
+    .sort({ timestamp: -1 })
+    .lean();
 
   return sendSuccess(res, {
     message: 'NGO dashboard fetched successfully.',
     data: {
-      profile: ngo,
+      profile: {
+        name: ngo.name,
+        email: ngo.email,
+        phone: ngo.phone,
+        city: ngo.city,
+        district: ngo.district,
+        servedCities: ngo.servedCities ?? [],
+        servedDistricts: ngo.servedDistricts ?? [],
+        status: ngo.verificationStatus,
+        operationalStatus: ngo.operationalStatus
+      },
+      complaints: complaints.map(serializeComplaintForNGO),
       metrics: {
         totalAssigned,
         openCases,

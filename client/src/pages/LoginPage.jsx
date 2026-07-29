@@ -1,4 +1,4 @@
-import { startTransition, useState } from 'react';
+import { startTransition, useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../hooks/useAuth';
@@ -6,9 +6,9 @@ import { forgotPasswordRequest, resetPasswordRequest, registerNgoRequest } from 
 
 const securityFeatures = [
   { icon: '🔐', text: 'Multi-Factor Authentication (TOTP/OTP)' },
-  { icon: '📡', text: 'Audited Session Tracking & IP Verification' },
+  { icon: '📡', text: 'Privacy-minimized session tracking' },
   { icon: '🔒', text: 'Encrypted Chat & Evidence Vault Access' },
-  { icon: '🛡️', text: 'Hardware-Bound Security Keys' }
+  { icon: '🛡️', text: 'Rotating HttpOnly session credentials' }
 ];
 
 export function LoginPage() {
@@ -18,7 +18,7 @@ export function LoginPage() {
 
   const [mode, setMode] = useState('login');
   const [formState, setFormState] = useState({ email: '', password: '' });
-  const [mfaData, setMfaData] = useState({ userId: '', mfaToken: '', code: '' });
+  const [mfaData, setMfaData] = useState({ challengeToken: '', code: '', recoveryCode: '' });
   const [forgotEmail, setForgotEmail] = useState('');
   const [resetData, setResetData] = useState({ token: '', newPassword: '' });
   const [ngoData, setNgoData] = useState({
@@ -30,6 +30,16 @@ export function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const destination = location.state?.from ?? '/dashboard';
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const resetToken = params.get('resetToken');
+    if (resetToken) {
+      setResetData((value) => ({ ...value, token: resetToken }));
+      setMode('reset');
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, []);
 
   if (isAuthenticated) return <Navigate to="/dashboard" replace />;
 
@@ -48,7 +58,7 @@ export function LoginPage() {
     try {
       const result = await login(formState);
       if (result?.mfaRequired) {
-        setMfaData({ userId: result.userId, mfaToken: result.mfaToken, code: '' });
+        setMfaData({ challengeToken: result.challengeToken, code: '', recoveryCode: '' });
         setMode('mfa');
       } else {
         startTransition(() => navigate(destination, { replace: true }));
@@ -65,7 +75,10 @@ export function LoginPage() {
     setIsSubmitting(true);
     setErrorMessage('');
     try {
-      await loginMfa({ userId: mfaData.userId, mfaToken: mfaData.mfaToken, code: mfaData.code });
+      await loginMfa({
+        challengeToken: mfaData.challengeToken,
+        ...(mfaData.recoveryCode ? { recoveryCode: mfaData.recoveryCode } : { code: mfaData.code })
+      });
       startTransition(() => navigate(destination, { replace: true }));
     } catch (err) {
       setErrorMessage(err.message);
@@ -81,8 +94,7 @@ export function LoginPage() {
     setSuccessMessage('');
     try {
       const res = await forgotPasswordRequest(forgotEmail);
-      setSuccessMessage(res.message || 'Reset link sent to console.');
-      setMode('reset');
+      setSuccessMessage(res.message || 'If the account exists, reset instructions will be sent when email delivery is configured.');
     } catch (err) {
       setErrorMessage(err.message);
     } finally {
@@ -219,7 +231,7 @@ export function LoginPage() {
               </span>
             </h2>
             <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.45)', lineHeight: '1.7', marginBottom: '32px', maxWidth: '380px' }}>
-              Authorized access for NGOs, Investigators, Operators, and Administrators. MFA tokens required for all platform interventions.
+              Authorized access for approved NGOs, investigators, operators, and administrators. MFA can be enabled for stronger account protection.
             </p>
 
             {/* Security Features */}
@@ -252,7 +264,7 @@ export function LoginPage() {
             position: 'relative'
           }}>
             <p style={{ fontSize: '11px', color: 'rgba(239,100,100,0.8)', lineHeight: '1.5', margin: 0 }}>
-              ⚠️ SatyaShield is locked by hardware-bound security keys. Unauthorized login attempts trigger security protocols and log client signatures in the global audit vault.
+              ⚠️ Failed authentication is rate-limited and recorded using privacy-minimized security events.
             </p>
           </div>
         </div>
@@ -298,6 +310,12 @@ export function LoginPage() {
                     style={fieldStyle}
                     placeholder="operator@satyashield.gov.in"
                   />
+                </div>
+                <div>
+                  <label style={labelStyle}>Recovery Code (alternative)</label>
+                  <input type="text" name="recoveryCode" value={mfaData.recoveryCode}
+                    onChange={handleChange(setMfaData)} style={fieldStyle}
+                    placeholder="Single-use recovery code" />
                 </div>
                 <div>
                   <label style={labelStyle}>Password</label>
@@ -367,10 +385,10 @@ export function LoginPage() {
             <div>
               <p className="eyebrow" style={{ marginBottom: '8px' }}>Password Recovery</p>
               <h2 style={{ fontSize: '32px', fontWeight: '800', color: '#fff', letterSpacing: '-0.03em', marginBottom: '6px' }}>
-                Request Reset Token
+                Request Password Reset
               </h2>
               <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', marginBottom: '32px' }}>
-                Enter your email to receive a password reset security token.
+                If the account is eligible, reset instructions will be queued without revealing whether it exists.
               </p>
 
               <form onSubmit={handleForgotSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -385,7 +403,7 @@ export function LoginPage() {
                   />
                 </div>
                 <button type="submit" disabled={isSubmitting} className="button-primary" style={{ width: '100%', padding: '14px' }}>
-                  {isSubmitting ? '⏳ Requesting...' : '📧 Send Recovery Token'}
+                  {isSubmitting ? '⏳ Requesting...' : '📧 Request Reset Instructions'}
                 </button>
                 <button type="button" onClick={() => setMode('login')} className="button-ghost" style={{ width: '100%' }}>
                   ← Back to Login
@@ -402,7 +420,7 @@ export function LoginPage() {
                 Reset Password
               </h2>
               <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', marginBottom: '32px' }}>
-                Enter the recovery token and your new password.
+                Set a new password using the one-time reset link. The token is removed from browser history immediately.
               </p>
 
               <form onSubmit={handleResetSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -423,7 +441,7 @@ export function LoginPage() {
                     value={resetData.newPassword}
                     onChange={handleChange(setResetData)}
                     style={fieldStyle}
-                    placeholder="Min. 8 characters"
+                    placeholder="At least 12 characters"
                   />
                 </div>
                 <button type="submit" disabled={isSubmitting} className="button-primary" style={{ width: '100%', padding: '14px' }}>

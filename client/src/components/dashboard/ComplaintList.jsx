@@ -76,8 +76,7 @@ export function ComplaintList({
                     </p>
                     <ComplaintStatusBadge status={complaint.status} />
                     <ComplaintRiskBadge
-                      riskLevel={complaint.riskLevel}
-                      riskScore={complaint.riskScore}
+                      riskLevel={complaint.triage?.severity || 'moderate'}
                     />
                   </div>
 
@@ -90,10 +89,7 @@ export function ComplaintList({
                     <span>Submitted: {new Date(complaint.timestamp).toLocaleString()}</span>
                     <span>Media: {complaint.mediaType === 'none' ? 'None' : complaint.mediaType}</span>
                     <span>
-                      Keywords:{' '}
-                      {complaint.detectedKeywords?.length
-                        ? complaint.detectedKeywords.join(', ')
-                        : 'None'}
+                      Review: {complaint.triage?.reviewState || 'review_required'}
                     </span>
                   </div>
 
@@ -118,20 +114,9 @@ export function ComplaintList({
                 </div>
 
                 <div className="w-full max-w-sm space-y-3">
-                  {complaint.mediaUrl ? (
-                    <a
-                      href={complaint.mediaUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="button-secondary flex w-full"
-                    >
-                      View media
-                    </a>
-                  ) : (
-                    <div className="rounded-[22px] border border-dashed border-brand-200 px-4 py-3 text-center text-sm text-brand-500">
-                      No media attached
-                    </div>
-                  )}
+                  <div className="rounded-[22px] border border-dashed border-brand-200 px-4 py-3 text-center text-sm text-brand-500">
+                    Evidence is available only through the authorized case vault.
+                  </div>
 
                   <label className="block">
                     <span className="mb-2 block text-xs font-semibold uppercase tracking-[0.24em] text-brand-500">

@@ -1,132 +1,138 @@
+import crypto from 'crypto';
+import { env } from '../config/env.js';
 import {
-  registerUser,
-  verifyEmail as verifyEmailService,
-  loginUser,
-  verifyLoginMfa,
-  rotateRefreshToken,
-  logoutSession,
-  requestPasswordReset,
-  resetPassword as resetPasswordService,
-  setupMfa as setupMfaService,
-  enableMfa as enableMfaService,
-  listUserSessions,
-  revokeUserSession
+  changePassword, disableMfa as disableMfaService, enableMfa as enableMfaService, listUserSessions, loginUser,
+  logoutSession, regenerateRecoveryCodesSecure, registerUser, requestPasswordReset,
+  resendVerification, resetPassword as resetPasswordService, revokeAllSessions,
+  revokeUserSession, rotateRefreshToken, setupMfa as setupMfaService,
+  verifyEmail as verifyEmailService, verifyLoginMfa
 } from '../services/auth.service.js';
+import { authCookieOptions, readCookie } from '../middlewares/csrf.middleware.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
+
+function attachSessionCookies(res, refreshToken) {
+  const csrfToken = crypto.randomBytes(24).toString('base64url');
+  res.cookie(env.authCookieName, refreshToken, authCookieOptions({ httpOnly: true }));
+  res.cookie(env.csrfCookieName, csrfToken, authCookieOptions({ httpOnly: false }));
+  return csrfToken;
+}
+
+function clearSessionCookies(res) {
+  const { maxAge: _refreshMaxAge, ...refreshOptions } = authCookieOptions({ httpOnly: true });
+  const { maxAge: _csrfMaxAge, ...csrfOptions } = authCookieOptions({ httpOnly: false });
+  res.clearCookie(env.authCookieName, refreshOptions);
+  res.clearCookie(env.csrfCookieName, csrfOptions);
+}
+
+function sessionResponse(res, result, message) {
+  const { refreshToken, ...safe } = result;
+  const csrfToken = attachSessionCookies(res, refreshToken);
+  return res.status(200).json({ success: true, message, data: { ...safe, csrfToken } });
+}
 
 export const register = asyncHandler(async (req, res) => {
   const result = await registerUser(req.validated.registration, req);
-  res.status(201).json({
+  res.status(202).json({
     success: true,
-    message: 'User registered successfully. Verification email logged to console.',
+    message: 'If registration is eligible, verification instructions were queued.',
     data: result
   });
+});
+
+export const resendVerificationController = asyncHandler(async (req, res) => {
+  res.status(200).json(await resendVerification(req.body.email, req));
 });
 
 export const verifyEmail = asyncHandler(async (req, res) => {
-  const { token } = req.query;
-  const result = await verifyEmailService(token, req);
-  res.status(200).json(result);
+  res.status(200).json(await verifyEmailService(req.body.token, req));
 });
 
 export const login = asyncHandler(async (req, res) => {
-  const { email, password } = req.validated.auth;
-  const result = await loginUser({ email, password }, req);
-  
-  res.status(200).json({
-    success: true,
-    message: result.mfaRequired ? 'MFA code is required to complete login.' : 'Login successful.',
-    data: result
-  });
+  const result = await loginUser(req.validated.auth, req);
+  if (result.mfaRequired) {
+    return res.status(200).json({
+      success: true, message: 'MFA is required.', data: result
+    });
+  }
+  return sessionResponse(res, result, 'Login successful.');
 });
 
 export const verifyMfa = asyncHandler(async (req, res) => {
-  const { userId, mfaToken, code } = req.validated.mfaVerify;
-  const result = await verifyLoginMfa({ userId, mfaToken, code }, req);
-
-  res.status(200).json({
-    success: true,
-    message: 'MFA verified successfully.',
-    data: result
-  });
+  const result = await verifyLoginMfa(req.body, req);
+  return sessionResponse(res, result, 'MFA verified successfully.');
 });
 
 export const refresh = asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
-  const result = await rotateRefreshToken(refreshToken, req);
-
-  res.status(200).json({
-    success: true,
-    message: 'Token refreshed successfully.',
-    data: result
-  });
+  const result = await rotateRefreshToken(readCookie(req, env.authCookieName), req);
+  return sessionResponse(res, result, 'Session refreshed.');
 });
 
 export const logout = asyncHandler(async (req, res) => {
-  const { refreshToken } = req.body;
-  await logoutSession(refreshToken, req);
-
-  res.status(200).json({
-    success: true,
-    message: 'Logged out successfully.'
-  });
+  await logoutSession(readCookie(req, env.authCookieName), req);
+  clearSessionCookies(res);
+  res.status(200).json({ success: true, message: 'Logged out.' });
 });
 
 export const forgotPassword = asyncHandler(async (req, res) => {
-  const { email } = req.validated.forgotPassword;
-  const result = await requestPasswordReset(email, req);
-  res.status(200).json(result);
+  res.status(200).json(await requestPasswordReset(req.validated.forgotPassword.email, req));
 });
 
 export const resetPassword = asyncHandler(async (req, res) => {
-  const { token, newPassword } = req.validated.resetPassword;
-  const result = await resetPasswordService({ token, newPassword }, req);
+  res.status(200).json(await resetPasswordService(req.validated.resetPassword, req));
+});
+
+export const passwordChange = asyncHandler(async (req, res) => {
+  const result = await changePassword(req.user.id, req.body, req);
+  clearSessionCookies(res);
   res.status(200).json(result);
 });
 
 export const getCurrentUser = asyncHandler(async (req, res) => {
-  res.status(200).json({
-    success: true,
-    data: {
-      user: {
-        id: req.user.id,
-        name: req.user.name,
-        email: req.user.email,
-        role: req.user.role,
-        mfaEnabled: req.user.mfaEnabled,
-        isVerified: req.user.isVerified
-      }
-    }
-  });
+  res.status(200).json({ success: true, data: { user: {
+    id: req.user.id, name: req.user.name, email: req.user.email, role: req.user.role,
+    mfaEnabled: req.user.mfaEnabled, isVerified: req.user.isVerified,
+    accountState: req.user.accountState
+  } } });
 });
 
 export const setupMfa = asyncHandler(async (req, res) => {
-  const result = await setupMfaService(req.user.id);
-  res.status(200).json({
-    success: true,
-    data: result
-  });
+  res.status(200).json({ success: true, data: await setupMfaService(req.user.id) });
 });
 
 export const enableMfa = asyncHandler(async (req, res) => {
-  const { code } = req.validated.mfaEnable;
-  const result = await enableMfaService(req.user.id, code, req);
+  res.status(200).json(await enableMfaService(req.user.id, req.validated.mfaEnable.code, req));
+});
+
+export const regenerateRecovery = asyncHandler(async (req, res) => {
+  res.status(200).json({ success: true, data: {
+    recoveryCodes: await regenerateRecoveryCodesSecure(req.user.id, req.body, req)
+  } });
+});
+
+export const disableMfa = asyncHandler(async (req, res) => {
+  const result = await disableMfaService(req.user.id, req.body, req);
+  clearSessionCookies(res);
   res.status(200).json(result);
 });
 
 export const getSessions = asyncHandler(async (req, res) => {
-  const sessions = await listUserSessions(req.user.id);
-  res.status(200).json({
-    success: true,
-    data: { sessions }
-  });
+  res.status(200).json({ success: true, data: {
+    sessions: await listUserSessions(req.user.id, req.staffSessionId)
+  } });
 });
 
 export const revokeSession = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  await revokeUserSession(req.user.id, id);
-  res.status(200).json({
-    success: true,
-    message: 'Session revoked successfully.'
-  });
+  await revokeUserSession(req.user.id, req.params.id);
+  res.status(200).json({ success: true, message: 'Session revoked.' });
+});
+
+export const logoutOthers = asyncHandler(async (req, res) => {
+  await revokeAllSessions(req.user.id, req.staffSessionId);
+  res.status(200).json({ success: true, message: 'Other sessions revoked.' });
+});
+
+export const logoutAll = asyncHandler(async (req, res) => {
+  await revokeAllSessions(req.user.id);
+  clearSessionCookies(res);
+  res.status(200).json({ success: true, message: 'All sessions revoked.' });
 });

@@ -4,7 +4,7 @@ const notificationSchema = new mongoose.Schema(
   {
     type: {
       type: String,
-      enum: ['new-complaint'],
+      enum: ['new-complaint', 'status-change'],
       required: true
     },
     title: {
@@ -12,21 +12,19 @@ const notificationSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
-    message: {
-      type: String,
-      required: true,
-      trim: true
-    },
+    eventClass: { type: String, enum: ['case-created', 'case-status-changed'], required: true },
     severity: {
       type: String,
       enum: ['info', 'warning', 'critical'],
       default: 'info'
     },
-    complaintAnonymousId: {
+    resourceRef: { type: String, required: true, index: true },
+    deliveryState: {
       type: String,
-      default: null,
-      index: true
+      enum: ['queued', 'skipped_not_configured', 'sent', 'failed'],
+      default: 'skipped_not_configured'
     },
+    provider: { type: String, default: 'none' },
     isRead: {
       type: Boolean,
       default: false
@@ -38,4 +36,3 @@ const notificationSchema = new mongoose.Schema(
 );
 
 export const Notification = mongoose.model('Notification', notificationSchema);
-

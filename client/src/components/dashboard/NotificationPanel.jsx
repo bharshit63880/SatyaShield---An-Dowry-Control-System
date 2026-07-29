@@ -36,10 +36,10 @@ export function NotificationPanel({ notifications, unreadCount }) {
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-sm font-semibold">{notification.title}</p>
-                  <p className="mt-2 text-sm opacity-90">{notification.message}</p>
-                  {notification.complaintAnonymousId ? (
+                  <p className="mt-2 text-sm opacity-90">{notification.eventClass}</p>
+                  {notification.resourceRef ? (
                     <p className="mt-2 text-xs uppercase tracking-[0.18em] opacity-80">
-                      Complaint ID: {notification.complaintAnonymousId}
+                      Case reference: {notification.resourceRef}
                     </p>
                   ) : null}
                 </div>

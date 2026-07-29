@@ -50,7 +50,7 @@ const features = [
   {
     icon: '🔒',
     title: 'Encrypted Evidence Vault',
-    desc: 'EXIF metadata stripped, files AES-256 encrypted before cloud storage.',
+    desc: 'Accepted evidence is encrypted before being placed in private storage.',
     color: '#f59e0b'
   },
   {
@@ -104,7 +104,7 @@ export function HomePage() {
   function handleSearch(e) {
     e.preventDefault();
     if (trackingId.trim()) {
-      navigate(`/track/${trackingId.trim()}`);
+      navigate('/track', { state: { caseId: trackingId.trim() } });
     }
   }
 
@@ -147,7 +147,7 @@ export function HomePage() {
               maxWidth: '560px',
               marginBottom: '32px'
             }}>
-              Anonymous Protection For All. Military-grade secure reporting for dowry harassment victims — zero identity exposure, instant NGO response.
+              Identity-minimized reporting for dowry harassment concerns, with private case access and no guaranteed response time.
             </p>
 
             {/* CTA Buttons */}
@@ -251,7 +251,7 @@ export function HomePage() {
               </p>
               {[
                 'Zero PII fields collected',
-                'EXIF data stripped from media',
+                'Encrypted private evidence storage',
                 'AES-256 encryption at rest',
                 'Approximate region routing only'
               ].map(item => (
@@ -362,7 +362,7 @@ export function HomePage() {
             You Are Not Alone.
           </h2>
           <p style={{ fontSize: '16px', color: 'rgba(255,255,255,0.5)', maxWidth: '440px', margin: '0 auto 32px', lineHeight: '1.6' }}>
-            File an anonymous report in under 3 minutes. Our network responds within 15 minutes.
+            File an identity-minimized report when it is safe to do so. This platform is not an emergency service.
           </p>
 
           <div style={{ display: 'flex', gap: '16px', justifyContent: 'center', flexWrap: 'wrap' }}>

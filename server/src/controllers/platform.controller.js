@@ -17,8 +17,8 @@ const publicContent = {
   publicFeatures: [
     'Anonymous case ID generation',
     'Approximate location sharing with consent',
-    'Media metadata sanitization',
-    'Risk triage and NGO routing',
+    'Encrypted private evidence storage',
+    'Local risk triage and NGO routing',
     'Case status tracking'
   ],
   safetyNotice:
@@ -35,7 +35,7 @@ export const getPlatformConfig = asyncHandler(async (_req, res) => {
       features: {
         anonymousComplaints: true,
         mediaUpload: true,
-        chatbot: Boolean(env.openaiApiKey),
+        chatbot: false,
         mfa: true,
         auditLogging: true
       }
@@ -58,4 +58,3 @@ export const getPublicContent = asyncHandler(async (_req, res) => {
     }
   });
 });
-

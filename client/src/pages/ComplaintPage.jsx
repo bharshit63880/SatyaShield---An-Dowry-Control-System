@@ -1,7 +1,9 @@
 import { startTransition, useState } from 'react';
 import { submitComplaintRequest } from '../services/api';
+import { buildRecoveryCardContent } from '../utils/recovery-card';
+import { AI_DISCLOSURE_VERSION, CONSENT_VERSION, PRIVACY_NOTICE_VERSION } from '../config/privacy';
 
-const acceptedFileTypes = 'image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm,video/quicktime';
+const acceptedFileTypes = 'image/png,image/jpeg,image/webp';
 
 const STEPS = [
   { id: 1, label: 'Incident', icon: '📋' },
@@ -10,12 +12,28 @@ const STEPS = [
 ];
 
 const initialFormState = {
+  complaintCategory: 'dowry_harassment',
+  preferredLanguage: '',
+  dangerHappeningNow: 'unknown',
+  immediateThreatToLife: 'unknown',
+  weaponInvolved: 'unknown',
+  seriousInjuryPresent: 'unknown',
+  currentlyConfined: 'unknown',
+  threatEscalating: 'unknown',
+  stalkingOrRepeatedContact: 'unknown',
+  vulnerablePersonAtRisk: 'unknown',
+  urgentMedicalHelpNeeded: 'unknown',
+  canSafelyContinue: 'unknown',
+  reporterUrgency: 'unknown',
+  incidentRecency: 'unknown',
   description: '',
   city: '',
   district: '',
   locationConsent: false,
   website: '',
-  media: null
+  media: null,
+  privacyAcknowledged: false,
+  aiConsent: false
 };
 
 function StepIndicator({ currentStep }) {
@@ -87,6 +105,29 @@ function StepIndicator({ currentStep }) {
 }
 
 function SuccessScreen({ data }) {
+  const [copyStatus, setCopyStatus] = useState('');
+
+  async function copyValue(label, value) {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopyStatus(`${label} copied.`);
+    } catch {
+      setCopyStatus('Copy was blocked. Select and copy the value manually.');
+    }
+  }
+
+  function downloadRecoveryCard() {
+    const content = buildRecoveryCardContent(data);
+    const url = URL.createObjectURL(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = 'satyashield-recovery-card.txt';
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  }
+
   return (
     <div style={{ textAlign: 'center', padding: '32px' }}>
       <div style={{
@@ -105,7 +146,7 @@ function SuccessScreen({ data }) {
         Report Submitted Successfully
       </h3>
       <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.5)', marginBottom: '32px', maxWidth: '360px', margin: '0 auto 32px' }}>
-        Your anonymous report has been received and encrypted. Save your Anonymous ID to track this case.
+        Your report was received. Save both credentials below; the access secret is shown only once.
       </p>
 
       {/* Anonymous ID */}
@@ -131,10 +172,27 @@ function SuccessScreen({ data }) {
           borderRadius: '8px',
           letterSpacing: '0.05em'
         }}>
-          {data.anonymousId}
+          {data.caseId}
         </p>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+        <p style={{ fontSize: '10px', fontWeight: '700', color: '#00e5cc', letterSpacing: '0.3em', textTransform: 'uppercase', marginBottom: '8px' }}>
+          Reporter Access Secret
+        </p>
+        <p style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '14px', color: '#fff', overflowWrap: 'anywhere', background: 'rgba(0,0,0,0.3)', padding: '10px 14px', borderRadius: '8px' }}>
+          {data.accessSecret}
+        </p>
+        <p style={{ marginTop: '16px', fontSize: '12px', color: 'rgba(255,255,255,0.6)' }}>
+          Created {new Date(data.createdAt).toLocaleString()}
+        </p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: '18px' }}>
+          <button type="button" className="button-secondary" onClick={() => copyValue('Case ID', data.caseId)}>Copy Case ID</button>
+          <button type="button" className="button-secondary" onClick={() => copyValue('Access secret', data.accessSecret)}>Copy Access Secret</button>
+          <button type="button" className="button-secondary" onClick={() => copyValue('Case credentials', `Case ID: ${data.caseId}\nAccess secret: ${data.accessSecret}`)}>Copy Both</button>
+          <button type="button" className="button-primary" onClick={downloadRecoveryCard}>Download Recovery Card</button>
+        </div>
+        {copyStatus ? <p style={{ marginTop: '12px', fontSize: '12px', color: '#00e5cc' }}>{copyStatus}</p> : null}
+
+        <div style={{ display: 'none', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div>
             <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.35)', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Status</p>
             <p style={{ fontSize: '13px', color: '#00ff88', fontWeight: '600' }}>{data.status}</p>
@@ -153,16 +211,13 @@ function SuccessScreen({ data }) {
           </div>
         </div>
 
-        {data.mediaUrl && (
-          <a href={data.mediaUrl} target="_blank" rel="noreferrer" className="button-secondary"
-            style={{ marginTop: '16px', display: 'inline-flex', fontSize: '13px' }}>
-            📎 View Uploaded Evidence
-          </a>
-        )}
       </div>
 
+      <div className="alert-warning" style={{ textAlign: 'left', marginBottom: '12px' }}>
+        Save both values now. The access secret cannot be displayed or recovered automatically later. Do not share it.
+      </div>
       <div className="alert-warning" style={{ textAlign: 'left' }}>
-        ⚠️ Save this Anonymous ID securely. It's your only way to track or update this complaint. SatyaShield does not store your identity.
+        Your recovery card is the only self-service way to unlock this report. SatyaShield cannot automatically recover the access secret.
       </div>
     </div>
   );
@@ -219,16 +274,30 @@ export function ComplaintPage() {
 
     const payload = new FormData();
     payload.append('description', formState.description);
+    payload.append('complaintCategory', formState.complaintCategory);
+    payload.append('preferredLanguage', formState.preferredLanguage);
+    for (const field of [
+      'dangerHappeningNow', 'immediateThreatToLife', 'weaponInvolved',
+      'seriousInjuryPresent', 'currentlyConfined', 'threatEscalating',
+      'stalkingOrRepeatedContact', 'vulnerablePersonAtRisk',
+      'urgentMedicalHelpNeeded', 'canSafelyContinue',
+      'reporterUrgency', 'incidentRecency'
+    ]) payload.append(field, formState[field]);
     payload.append('city', formState.city);
     payload.append('district', formState.district);
     payload.append('locationConsent', String(formState.locationConsent));
     payload.append('website', formState.website);
+    payload.append('privacyAcknowledged', String(formState.privacyAcknowledged));
+    payload.append('privacyNoticeVersion', PRIVACY_NOTICE_VERSION);
+    payload.append('consentVersion', CONSENT_VERSION);
+    payload.append('aiConsent', String(formState.aiConsent));
+    payload.append('aiDisclosureVersion', AI_DISCLOSURE_VERSION);
     if (formState.media) payload.append('media', formState.media);
 
     try {
       const response = await submitComplaintRequest(payload);
       startTransition(() => {
-        setSuccessData(response.data.complaint);
+        setSuccessData(response.data);
         setFormState(initialFormState);
         setStep(1);
       });
@@ -274,9 +343,9 @@ export function ComplaintPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '28px' }}>
             {[
               { icon: '🔑', text: 'Automatic anonymous ID for every report' },
-              { icon: '🗑️', text: 'EXIF metadata stripped from all media uploads' },
+              { icon: '🔐', text: 'Evidence is encrypted in private storage' },
               { icon: '📍', text: 'Approximate location only, with consent' },
-              { icon: '🤖', text: 'AI risk assessment & NGO routing' }
+              { icon: '🤖', text: 'Optional AI analysis is off unless you consent' }
             ].map((item) => (
               <div key={item.text} style={{
                 display: 'flex',
@@ -356,9 +425,67 @@ export function ComplaintPage() {
                   </p>
 
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div className="alert-warning">
+                      These neutral safety questions help prioritize human review. Evidence is not required.
+                      Unknown and “prefer not to say” are valid answers. SatyaShield is not an emergency-dispatch service.
+                    </div>
+                    {[
+                      ['dangerHappeningNow', 'Is danger happening now?'],
+                      ['immediateThreatToLife', 'Is there an immediate threat to life?'],
+                      ['weaponInvolved', 'Is a weapon involved?'],
+                      ['seriousInjuryPresent', 'Is there a serious injury?'],
+                      ['currentlyConfined', 'Is anyone currently prevented from leaving?'],
+                      ['threatEscalating', 'Is the threat escalating?'],
+                      ['stalkingOrRepeatedContact', 'Is stalking or repeated unwanted contact occurring?'],
+                      ['vulnerablePersonAtRisk', 'May a child or another vulnerable person be at risk?'],
+                      ['urgentMedicalHelpNeeded', 'Does someone appear to need urgent medical help?'],
+                      ['canSafelyContinue', 'Can you safely continue using this application?']
+                    ].map(([name, label]) => (
+                      <div key={name}>
+                        <label htmlFor={`triage-${name}`} style={labelStyle}>{label}</label>
+                        <select id={`triage-${name}`} name={name} value={formState[name]} onChange={handleChange} style={fieldStyle}>
+                          <option value="unknown">Unknown</option>
+                          <option value="yes">Yes</option>
+                          <option value="no">No</option>
+                          <option value="prefer_not_to_say">Prefer not to say</option>
+                        </select>
+                      </div>
+                    ))}
+                    <div className="responsive-two-column">
+                      <div><label htmlFor="reporterUrgency" style={labelStyle}>How urgent does this feel?</label>
+                        <select id="reporterUrgency" name="reporterUrgency" value={formState.reporterUrgency} onChange={handleChange} style={fieldStyle}>
+                          <option value="unknown">Unknown</option><option value="routine">Routine concern</option>
+                          <option value="concerned">Concerned</option><option value="urgent">Urgent</option>
+                          <option value="prefer_not_to_say">Prefer not to say</option>
+                        </select></div>
+                      <div><label htmlFor="incidentRecency" style={labelStyle}>When did this happen?</label>
+                        <select id="incidentRecency" name="incidentRecency" value={formState.incidentRecency} onChange={handleChange} style={fieldStyle}>
+                          <option value="unknown">Unknown</option><option value="happening_now">Happening now</option>
+                          <option value="within_24_hours">Within 24 hours</option><option value="within_week">Within a week</option>
+                          <option value="historical">Historical</option><option value="prefer_not_to_say">Prefer not to say</option>
+                        </select></div>
+                    </div>
+                    <div className="responsive-two-column">
+                      <div>
+                        <label htmlFor="complaintCategory" style={labelStyle}>Support category *</label>
+                        <select id="complaintCategory" name="complaintCategory" value={formState.complaintCategory}
+                          onChange={handleChange} style={fieldStyle}>
+                          <option value="dowry_harassment">Dowry harassment</option>
+                          <option value="domestic_violence">Domestic violence</option>
+                          <option value="legal_support">Legal support</option>
+                          <option value="safety_planning">Safety planning</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label htmlFor="preferredLanguage" style={labelStyle}>Preferred language (Optional)</label>
+                        <input id="preferredLanguage" name="preferredLanguage" value={formState.preferredLanguage}
+                          onChange={handleChange} style={fieldStyle} placeholder="e.g. Hindi" />
+                      </div>
+                    </div>
                     <div>
-                      <label style={labelStyle}>Incident Description *</label>
+                      <label htmlFor="incidentDescription" style={labelStyle}>Incident Description *</label>
                       <textarea
+                        id="incidentDescription"
                         name="description"
                         rows="7"
                         value={formState.description}
@@ -448,7 +575,7 @@ export function ComplaintPage() {
                     Upload Evidence
                   </h2>
                   <p style={{ fontSize: '14px', color: 'rgba(255,255,255,0.4)', marginBottom: '28px' }}>
-                    Optional. Images or video evidence help authorities respond faster.
+                    Optional. Supported image evidence can help authorized staff review the report.
                   </p>
 
                   {/* Upload zone */}
@@ -490,7 +617,7 @@ export function ComplaintPage() {
                           Drop file here or click to upload
                         </p>
                         <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)' }}>
-                          PNG, JPG, WEBP, GIF, MP4, WEBM, MOV — max 30MB
+                          PNG, JPG, WEBP — max 30MB
                         </p>
                       </>
                     )}
@@ -505,7 +632,7 @@ export function ComplaintPage() {
                     marginBottom: '28px'
                   }}>
                     <p style={{ fontSize: '12px', color: 'rgba(200,180,255,0.8)', lineHeight: '1.5', margin: 0 }}>
-                      🔒 <strong>Metadata Sanitization:</strong> All EXIF data (GPS, camera model, date/time) is automatically stripped from uploaded files before storage. AES-256 encryption applied.
+                      🔒 <strong>Private evidence:</strong> Accepted files are encrypted before private storage. Avoid uploading identity details you do not want authorized reviewers to see.
                     </p>
                   </div>
 
@@ -571,7 +698,22 @@ export function ComplaintPage() {
 
                   {/* Final security notice */}
                   <div className="alert-success" style={{ marginBottom: '24px' }}>
-                    🛡️ This submission is fully anonymous. No IP, no identity, no exact location is stored. An encrypted anonymous ID will be generated for case tracking.
+                    SatyaShield minimizes identity collection and does not request your name or exact location. A case ID and separate access secret will be generated for private tracking.
+                  </div>
+
+                  <div style={{ display: 'grid', gap: '12px', marginBottom: '24px' }}>
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input type="checkbox" name="privacyAcknowledged" checked={formState.privacyAcknowledged} onChange={handleChange} />
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,.7)' }}>
+                        I have read the <a href="/privacy">privacy notice</a> and understand how this report is processed. Required.
+                      </span>
+                    </label>
+                    <label style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      <input type="checkbox" name="aiConsent" checked={formState.aiConsent} onChange={handleChange} />
+                      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,.7)' }}>
+                        Optional: allow the description to be sent to the configured AI provider for risk triage. If unchecked, local rules are used.
+                      </span>
+                    </label>
                   </div>
 
                   {/* Honeypot */}
@@ -592,7 +734,7 @@ export function ComplaintPage() {
                     <button
                       type="button"
                       onClick={handleSubmit}
-                      disabled={isSubmitting}
+                      disabled={isSubmitting || !formState.privacyAcknowledged}
                       className="button-primary"
                       style={{ flex: 1, padding: '14px', fontSize: '15px' }}
                     >

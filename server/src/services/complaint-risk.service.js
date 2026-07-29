@@ -1,173 +1,95 @@
-import { OpenAI } from 'openai';
 import { env } from '../config/env.js';
 
-const openai = env.openaiApiKey ? new OpenAI({ apiKey: env.openaiApiKey }) : null;
-
-const KEYWORD_WEIGHTS = [
-  { keyword: 'dowry', weight: 18, category: 'dowry' },
-  { keyword: 'dahej', weight: 18, category: 'dowry' },
-  { keyword: 'harassment', weight: 10, category: 'harassment' },
-  { keyword: 'mental torture', weight: 12, category: 'harassment' },
-  { keyword: 'abuse', weight: 12, category: 'violence' },
-  { keyword: 'violence', weight: 16, category: 'violence' },
-  { keyword: 'beating', weight: 16, category: 'violence' },
-  { keyword: 'threat', weight: 14, category: 'harassment' },
-  { keyword: 'threatening', weight: 14, category: 'harassment' },
-  { keyword: 'kill', weight: 24, category: 'violence' },
-  { keyword: 'murder', weight: 28, category: 'violence' },
-  { keyword: 'burn', weight: 20, category: 'violence' },
-  { keyword: 'suicide', weight: 24, category: 'suicide' },
-  { keyword: 'forced', weight: 10, category: 'harassment' },
-  { keyword: 'pressure', weight: 8, category: 'harassment' },
-  { keyword: 'demand', weight: 10, category: 'dowry' },
-  { keyword: 'money', weight: 6, category: 'dowry' },
-  { keyword: 'cash', weight: 6, category: 'dowry' },
-  { keyword: 'car', weight: 6, category: 'dowry' },
-  { keyword: 'gold', weight: 8, category: 'dowry' },
-  { keyword: 'jewellery', weight: 8, category: 'dowry' },
-  { keyword: 'bride', weight: 6, category: 'dowry' },
-  { keyword: 'marriage', weight: 6, category: 'dowry' },
-  { keyword: 'sasural', weight: 8, category: 'harassment' },
-  { keyword: 'in-laws', weight: 8, category: 'harassment' },
-  { keyword: 'husband', weight: 8, category: 'harassment' },
-  { keyword: 'stridhan', weight: 10, category: 'dowry' },
-  { keyword: '498a', weight: 16, category: 'harassment' },
-  { keyword: 'domestic violence', weight: 16, category: 'violence' },
-  { keyword: 'police', weight: 6, category: 'harassment' },
-  { keyword: 'helpline', weight: 6, category: 'harassment' }
+export const TRIAGE_ANSWER_VALUES = ['yes', 'no', 'unknown', 'prefer_not_to_say'];
+const FIELDS = [
+  ['dangerHappeningNow', 'danger_happening_now'],
+  ['immediateThreatToLife', 'immediate_threat_to_life'],
+  ['weaponInvolved', 'weapon_reported'],
+  ['seriousInjuryPresent', 'serious_injury_reported'],
+  ['currentlyConfined', 'confinement_reported'],
+  ['threatEscalating', 'escalating_threat'],
+  ['stalkingOrRepeatedContact', 'repeated_stalking'],
+  ['vulnerablePersonAtRisk', 'vulnerable_person_risk'],
+  ['urgentMedicalHelpNeeded', 'urgent_medical_concern']
 ];
 
-const HIGH_RISK_ESCALATION_TERMS = ['kill', 'murder', 'burn', 'suicide', 'violence', 'beating'];
-
-function normalizeText(text) {
-  return String(text ?? '').toLowerCase().replace(/\s+/g, ' ').trim();
-}
-
-// Local Fallback Algorithm
-export function analyzeComplaintRiskLocal(text) {
-  const normalizedText = normalizeText(text);
-
-  if (!normalizedText) {
-    return {
-      detectedKeywords: [],
-      riskScore: 0,
-      riskLevel: 'low',
-      indicators: {
-        dowryHarassment: false,
-        suicideRisk: false,
-        domesticViolence: false
-      },
-      escalationRecommendation: 'None. Complete description first.',
-      threatSummary: 'No description text provided.'
-    };
+export function evaluateDeterministicTriage(input) {
+  if (!input || typeof input !== 'object') return invalidAssessment();
+  for (const [field] of FIELDS) {
+    if (!TRIAGE_ANSWER_VALUES.includes(input[field])) return invalidAssessment();
   }
+  if (!TRIAGE_ANSWER_VALUES.includes(input.canSafelyContinue)) return invalidAssessment();
 
-  const detectedKeywords = [];
-  let riskScore = 0;
+  const indicatorCodes = FIELDS.filter(([field]) => input[field] === 'yes').map(([, code]) => code);
+  if (input.canSafelyContinue === 'no') indicatorCodes.push('reporter_cannot_continue_safely');
+  const unknownCount = [...FIELDS.map(([field]) => input[field]), input.canSafelyContinue]
+    .filter((value) => ['unknown', 'prefer_not_to_say'].includes(value)).length;
+  const conflicting = input.dangerHappeningNow === 'no' && input.immediateThreatToLife === 'yes';
 
-  let hasDowry = false;
-  let hasSuicide = false;
-  let hasViolence = false;
+  const critical =
+    input.immediateThreatToLife === 'yes' ||
+    (input.dangerHappeningNow === 'yes' && input.weaponInvolved === 'yes') ||
+    (input.seriousInjuryPresent === 'yes' && input.urgentMedicalHelpNeeded === 'yes') ||
+    (input.currentlyConfined === 'yes' && input.dangerHappeningNow === 'yes');
+  let severity = 'low';
+  if (critical) severity = 'critical';
+  else if (
+    input.dangerHappeningNow === 'yes' || input.weaponInvolved === 'yes' ||
+    input.seriousInjuryPresent === 'yes' || input.currentlyConfined === 'yes' ||
+    input.threatEscalating === 'yes' || input.stalkingOrRepeatedContact === 'yes' ||
+    input.vulnerablePersonAtRisk === 'yes' || input.urgentMedicalHelpNeeded === 'yes' ||
+    input.canSafelyContinue === 'no' || input.reporterUrgency === 'urgent'
+  ) severity = 'high';
+  else if (indicatorCodes.length || input.reporterUrgency === 'concerned') severity = 'moderate';
 
-  for (const { keyword, weight, category } of KEYWORD_WEIGHTS) {
-    if (normalizedText.includes(keyword)) {
-      detectedKeywords.push(keyword);
-      riskScore += weight;
-
-      if (category === 'dowry') hasDowry = true;
-      if (category === 'suicide') hasSuicide = true;
-      if (category === 'violence') hasViolence = true;
-    }
-  }
-
-  if (detectedKeywords.length >= 4) {
-    riskScore += 10;
-  }
-
-  if (HIGH_RISK_ESCALATION_TERMS.some((term) => normalizedText.includes(term))) {
-    riskScore += 12;
-  }
-
-  const boundedScore = Math.min(riskScore, 100);
-
-  let riskLevel = 'low';
-  if (boundedScore >= 60) {
-    riskLevel = 'high';
-  } else if (boundedScore >= 25) {
-    riskLevel = 'medium';
-  }
-
-  let escalationRecommendation = 'Routine NGO assignment and operator review.';
-  if (riskLevel === 'high') {
-    escalationRecommendation = 'Immediate escalation to designated investigators and local NGO coordinators due to high-risk keywords.';
-  } else if (hasSuicide) {
-    escalationRecommendation = 'Urgent crisis helpline support recommendation and mental health NGO dispatch.';
-  }
-
+  const uncertaintyState = conflicting ? 'conflicting' : unknownCount >= 5 ? 'incomplete' : 'none';
+  if (conflicting) indicatorCodes.push('conflicting_answers');
+  if (unknownCount >= 5) indicatorCodes.push('insufficient_information');
+  const reviewRequired = critical || uncertaintyState !== 'none';
+  if (reviewRequired) indicatorCodes.push('manual_review_required');
   return {
-    detectedKeywords,
-    riskScore: boundedScore,
-    riskLevel,
-    indicators: {
-      dowryHarassment: hasDowry || normalizedText.includes('dowry') || normalizedText.includes('dahej'),
-      suicideRisk: hasSuicide || normalizedText.includes('suicide') || normalizedText.includes('kill myself'),
-      domesticViolence: hasViolence || normalizedText.includes('abuse') || normalizedText.includes('beat') || normalizedText.includes('violence')
-    },
-    escalationRecommendation,
-    threatSummary: `Local engine scanned ${detectedKeywords.length} keywords. Level: ${riskLevel}.`
+    severity,
+    indicatorCodes: [...new Set(indicatorCodes)],
+    uncertaintyState,
+    reviewState: reviewRequired ? 'review_required' : 'auto_assessed',
+    recommendationCodes: [
+      critical ? 'priority_human_review' : 'authorized_human_review',
+      ...(uncertaintyState !== 'none' ? ['clarification_may_be_needed'] : [])
+    ],
+    triagePolicyVersion: env.triagePolicyVersion,
+    inputSchemaVersion: env.triageInputSchemaVersion,
+    criticalRulesetVersion: env.triageCriticalRulesetVersion
   };
 }
 
-// AI-based Risk Analysis with Fallback
-export async function analyzeComplaintRisk(text) {
-  if (!openai) {
-    console.log('[AI RISK ENGINE] OpenAI not configured. Using local rule fallback.');
-    return analyzeComplaintRiskLocal(text);
-  }
+function invalidAssessment() {
+  return {
+    severity: 'moderate',
+    indicatorCodes: ['insufficient_information', 'manual_review_required'],
+    uncertaintyState: 'invalid',
+    reviewState: 'review_required',
+    recommendationCodes: ['authorized_human_review'],
+    triagePolicyVersion: env.triagePolicyVersion,
+    inputSchemaVersion: env.triageInputSchemaVersion,
+    criticalRulesetVersion: env.triageCriticalRulesetVersion
+  };
+}
 
-  try {
-    const response = await openai.chat.completions.create({
-      model: env.openaiModel || 'gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `You are an expert Anti-Dowry triage AI. Analyze the complaint description text for security operations and return a JSON object ONLY matching this schema:
-{
-  "detectedKeywords": ["list", "of", "related", "terms"],
-  "riskScore": 75, // 0 to 100 integer
-  "riskLevel": "high", // "low", "medium", or "high"
-  "indicators": {
-    "dowryHarassment": true, // boolean
-    "suicideRisk": false, // boolean
-    "domesticViolence": true // boolean
-  },
-  "escalationRecommendation": "text suggestion details",
-  "threatSummary": "brief single line overview"
-}`
-        },
-        {
-          role: 'user',
-          content: text || 'No description provided.'
-        }
-      ],
-      response_format: { type: 'json_object' }
-    });
+// Legacy API deliberately ignores narrative and returns a review-required compatibility result.
+export function analyzeComplaintRiskLocal() {
+  return {
+    detectedKeywords: [], riskScore: 0, riskLevel: 'medium',
+    indicators: { dowryHarassment: false, suicideRisk: false, domesticViolence: false },
+    escalationRecommendation: null, threatSummary: null
+  };
+}
 
-    const parsed = JSON.parse(response.choices[0].message.content);
-    return {
-      detectedKeywords: parsed.detectedKeywords || [],
-      riskScore: typeof parsed.riskScore === 'number' ? parsed.riskScore : 0,
-      riskLevel: ['low', 'medium', 'high'].includes(parsed.riskLevel) ? parsed.riskLevel : 'low',
-      indicators: {
-        dowryHarassment: !!parsed.indicators?.dowryHarassment,
-        suicideRisk: !!parsed.indicators?.suicideRisk,
-        domesticViolence: !!parsed.indicators?.domesticViolence
-      },
-      escalationRecommendation: parsed.escalationRecommendation || 'Review case timeline.',
-      threatSummary: parsed.threatSummary || 'AI analysis completed.'
-    };
-  } catch (error) {
-    console.error('[AI RISK ENGINE] OpenAI API error, falling back to local analyzer:', error.message);
-    return analyzeComplaintRiskLocal(text);
-  }
+export async function analyzeComplaintRisk() {
+  return {
+    ...analyzeComplaintRiskLocal(),
+    processingMetadata: {
+      used: false, provider: 'disabled', model: null, disclosureVersion: null,
+      consentVersion: null, consentedAt: null, resultValidationState: 'local'
+    }
+  };
 }

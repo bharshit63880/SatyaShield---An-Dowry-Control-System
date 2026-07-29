@@ -29,6 +29,16 @@ const investigatorSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
+    isEligible: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
     assignedDistricts: {
       type: [String],
       default: []

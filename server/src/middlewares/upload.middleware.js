@@ -1,29 +1,22 @@
 import multer from 'multer';
+import { env } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 
-const allowedMimeTypes = new Set([
-  'image/jpeg',
-  'image/png',
-  'image/webp',
-  'image/gif',
-  'video/mp4',
-  'video/webm',
-  'video/quicktime'
-]);
-
-function fileFilter(_req, file, callback) {
-  if (!allowedMimeTypes.has(file.mimetype)) {
-    callback(new ApiError(400, 'Only image and video uploads are allowed.'));
-    return;
-  }
-
-  callback(null, true);
-}
-
-export const uploadComplaintMedia = multer({
+const uploader = multer({
   storage: multer.memoryStorage(),
-  fileFilter,
   limits: {
-    fileSize: 30 * 1024 * 1024
+    files: 1,
+    fields: 10,
+    fileSize: env.evidenceMaxFileSize
   }
 }).single('media');
+
+export function uploadComplaintMedia(req, res, next) {
+  uploader(req, res, (error) => {
+    if (!error) return next();
+    if (error instanceof multer.MulterError) return next(error);
+    return next(new ApiError(400, 'The multipart evidence upload is malformed.', {
+      code: 'EVIDENCE_MULTIPART_INVALID'
+    }));
+  });
+}

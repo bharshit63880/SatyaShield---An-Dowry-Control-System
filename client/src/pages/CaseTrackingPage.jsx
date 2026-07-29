@@ -1,381 +1,611 @@
-import { useEffect, useState, startTransition } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
+import { Link, useLocation, useParams } from 'react-router-dom';
 
 import {
-  getPublicComplaintRequest,
-  getComplaintTimelineRequest,
-  getComplaintEvidenceRequest,
-  uploadComplaintEvidenceRequest,
+  exchangeReporterAccessRequest,
+  downloadComplaintEvidenceRequest,
   getChatMessagesRequest,
-  sendChatMessageRequest
+  getComplaintEvidenceRequest,
+  getComplaintTimelineRequest,
+  getComplaintTriageRequest,
+  getPublicComplaintRequest,
+  sendChatMessageRequest,
+  startSosConfirmationRequest,
+  cancelSosRequest,
+  activateSosRequest,
+  getCurrentSosRequest,
+  getVerifiedHelplinesRequest,
+  uploadComplaintEvidenceRequest
 } from '../services/api';
+import {
+  createCaseChatSocket, sendRealtimeMessage
+} from '../services/realtime-chat';
+import { useLanguage } from '../context/LanguageContext';
+import { useReporterInactivityLock } from '../hooks/useReporterInactivityLock';
+import { AccessibleDialog } from '../components/ui/AccessibleDialog';
+
+const initialCredentials = { caseId: '', accessSecret: '' };
+const CRITICAL_SAFETY_GUIDANCE =
+  'If you or someone else may be in immediate danger, move to a safer place if you can and contact the appropriate local emergency service or a trusted person. SatyaShield does not automatically contact police, ambulance services or emergency responders.';
 
 export function CaseTrackingPage() {
-  const { anonymousId } = useParams();
+  const { t } = useLanguage();
+  const location = useLocation();
+  const { anonymousId = '' } = useParams();
+  const [credentials, setCredentials] = useState({
+    ...initialCredentials,
+    caseId: location.state?.caseId || anonymousId
+  });
+  const [caseId, setCaseId] = useState('');
+  const [reporterToken, setReporterToken] = useState(null);
   const [complaint, setComplaint] = useState(null);
+  const [triage, setTriage] = useState(null);
   const [timeline, setTimeline] = useState([]);
   const [evidenceList, setEvidenceList] = useState([]);
   const [messages, setMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [evidenceFile, setEvidenceFile] = useState(null);
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [errorMsg, setErrorMsg] = useState('');
-  const [successMsg, setSuccessMsg] = useState('');
+  const [isUnlocking, setIsUnlocking] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isSendingChat, setIsSendingChat] = useState(false);
+  const [downloadingEvidenceId, setDownloadingEvidenceId] = useState(null);
+  const [errorState, setErrorState] = useState(null);
+  const [successMsg, setSuccessMsg] = useState('');
+  const [chatConnectionState, setChatConnectionState] = useState('closed');
+  const [sos, setSos] = useState(null);
+  const [showSosConfirmation, setShowSosConfirmation] = useState(false);
+  const [sosNoticeAccepted, setSosNoticeAccepted] = useState(false);
+  const [shareOneTimeLocation, setShareOneTimeLocation] = useState(false);
+  const [sosSecondsRemaining, setSosSecondsRemaining] = useState(0);
+  const [helplines, setHelplines] = useState([]);
+  const chatSocketRef = useRef(null);
+
+  function mergeMessage(message) {
+    setMessages((current) => {
+      if (current.some((item) =>
+        (message.messageId && item.messageId === message.messageId) ||
+        (message.sequence && item.sequence === message.sequence))) return current;
+      return [...current, message].sort((a, b) =>
+        (a.sequence || 0) - (b.sequence || 0));
+    });
+  }
+
+  const clearAccess = useCallback((message = '') => {
+    chatSocketRef.current?.close();
+    chatSocketRef.current = null;
+    setReporterToken(null);
+    setCaseId('');
+    setComplaint(null);
+    setTriage(null);
+    setTimeline([]);
+    setEvidenceList([]);
+    setMessages([]);
+    setSos(null);
+    setShowSosConfirmation(false);
+    setSosNoticeAccepted(false);
+    setShareOneTimeLocation(false);
+    setChatInput('');
+    setEvidenceFile(null);
+    setSuccessMsg('');
+    setCredentials(initialCredentials);
+    if (message) {
+      setErrorState({ type: 'expired', message });
+    } else {
+      setErrorState(null);
+    }
+  }, []);
+
+  const inactivity = useReporterInactivityLock({
+    active: Boolean(reporterToken && complaint),
+    onLock: clearAccess
+  });
+
+  async function loadCase(activeCaseId, token) {
+    setIsLoading(true);
+    setErrorState(null);
+    try {
+      const [complaintRes, timelineRes, evidenceRes, chatRes, triageRes, sosRes, helpRes] = await Promise.all([
+        getPublicComplaintRequest(activeCaseId, token),
+        getComplaintTimelineRequest(activeCaseId, token),
+        getComplaintEvidenceRequest(activeCaseId, token),
+        getChatMessagesRequest(token, activeCaseId),
+        getComplaintTriageRequest(activeCaseId, token),
+        getCurrentSosRequest(token, activeCaseId),
+        getVerifiedHelplinesRequest({ country: 'in' })
+      ]);
+      startTransition(() => {
+        setComplaint(complaintRes.data.complaint);
+        setTimeline(timelineRes.data.history);
+        setEvidenceList(evidenceRes.data.evidenceList);
+        setMessages(chatRes.data.messages);
+        setTriage(triageRes.data.triage);
+        setSos(sosRes.data.sos);
+        setHelplines(helpRes.data.entries);
+      });
+    } catch (error) {
+      if (error.code === 'REPORTER_ACCESS_EXPIRED') {
+        clearAccess('Your case access session expired. Enter both credentials to unlock it again.');
+      } else {
+        setErrorState({ type: 'load', message: error.message });
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  async function handleUnlock(event) {
+    event.preventDefault();
+    setIsUnlocking(true);
+    setErrorState(null);
+    try {
+      const response = await exchangeReporterAccessRequest(
+        credentials.caseId.trim(),
+        credentials.accessSecret.trim()
+      );
+      const token = response.data.accessToken;
+      const unlockedCaseId = credentials.caseId.trim();
+      setReporterToken(token);
+      setCaseId(unlockedCaseId);
+      setCredentials(initialCredentials);
+      await loadCase(unlockedCaseId, token);
+    } catch (error) {
+      setReporterToken(null);
+      setErrorState({
+        type: 'invalid',
+        message:
+          error.code === 'REPORTER_ACCESS_RATE_LIMITED'
+            ? error.message
+            : 'Case access could not be verified. Check both credentials and try again.'
+      });
+    } finally {
+      setIsUnlocking(false);
+    }
+  }
 
   useEffect(() => {
-    let isMounted = true;
-
-    async function loadData() {
-      setIsLoading(true);
-      setErrorMsg('');
-      try {
-        const [complaintRes, timelineRes, evidenceRes, chatRes] = await Promise.all([
-          getPublicComplaintRequest(anonymousId),
-          getComplaintTimelineRequest(anonymousId),
-          getComplaintEvidenceRequest(anonymousId),
-          getChatMessagesRequest(null, anonymousId)
-        ]);
-
-        if (isMounted) {
-          setComplaint(complaintRes.data.complaint);
-          setTimeline(timelineRes.data.history);
-          setEvidenceList(evidenceRes.data.evidenceList);
-          setMessages(chatRes.data.messages);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setErrorMsg(err.message || 'Failed to load case tracking details.');
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
+    if (!reporterToken || !caseId) {
+      return undefined;
     }
 
-    loadData();
-
-    // Poll chat messages every 10 seconds for real-time feel
-    const interval = setInterval(async () => {
-      try {
-        const chatRes = await getChatMessagesRequest(null, anonymousId);
-        if (isMounted) {
-          setMessages(chatRes.data.messages);
-        }
-      } catch {}
-    }, 10000);
+    const socket = createCaseChatSocket({
+      credentialType: 'reporter', token: reporterToken, caseId,
+      afterSequence: messages.at(-1)?.sequence || 0,
+      onMessage: mergeMessage,
+      onSos: (event) => setSos((current) =>
+        current?.sosId === event.sosId ? { ...current, ...event } : current),
+      onState: setChatConnectionState,
+      onRevoked: () => clearAccess(
+        'Your case access is no longer available. Enter both credentials to unlock again.'
+      )
+    });
+    chatSocketRef.current = socket;
 
     return () => {
-      isMounted = false;
-      clearInterval(interval);
+      socket.close();
+      if (chatSocketRef.current === socket) chatSocketRef.current = null;
     };
-  }, [anonymousId]);
+  }, [reporterToken, caseId]);
 
-  async function handleEvidenceUpload(e) {
-    e.preventDefault();
+  useEffect(() => {
+    if (sos?.state !== 'confirmation_pending' || !sos.cancelUntil) {
+      setSosSecondsRemaining(0);
+      return undefined;
+    }
+    const update = () => setSosSecondsRemaining(Math.max(
+      0, Math.ceil((new Date(sos.cancelUntil).getTime() - Date.now()) / 1000)
+    ));
+    update();
+    const timer = window.setInterval(update, 250);
+    return () => window.clearInterval(timer);
+  }, [sos?.state, sos?.cancelUntil]);
+
+  async function handleStartSos() {
+    setErrorState(null);
+    try {
+      const response = await startSosConfirmationRequest(
+        reporterToken, caseId, crypto.randomUUID()
+      );
+      setSos(response.data.sos);
+      setShowSosConfirmation(false);
+      setSosNoticeAccepted(false);
+    } catch (error) {
+      setErrorState({ type: 'sos', message: error.message });
+    }
+  }
+
+  async function handleCancelSos() {
+    try {
+      const response = await cancelSosRequest(reporterToken, caseId, sos.sosId);
+      setSos(response.data.sos);
+      setShareOneTimeLocation(false);
+    } catch (error) {
+      setErrorState({ type: 'sos', message: error.message });
+    }
+  }
+
+  async function oneTimeLocation() {
+    if (!shareOneTimeLocation || !navigator.geolocation) return null;
+    return new Promise((resolve) => navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve({ latitude: coords.latitude, longitude: coords.longitude }),
+      () => resolve(null),
+      { enableHighAccuracy: false, maximumAge: 0, timeout: 5000 }
+    ));
+  }
+
+  async function handleActivateSos() {
+    setErrorState(null);
+    const location = await oneTimeLocation();
+    try {
+      const response = await activateSosRequest(
+        reporterToken, caseId, sos.sosId, {
+          version: sos.version,
+          locationConsent: Boolean(location),
+          locationMode: location ? 'current_once' : 'none',
+          location
+        }
+      );
+      setSos(response.data.sos);
+      if (shareOneTimeLocation && !location) {
+        setSuccessMsg('The safety request was created without location because location permission was unavailable.');
+      }
+    } catch (error) {
+      setErrorState({ type: 'sos', message: error.message });
+    }
+  }
+
+  async function handleEvidenceUpload(event) {
+    event.preventDefault();
     if (!evidenceFile) return;
-
     setIsUploading(true);
-    setErrorMsg('');
+    setErrorState(null);
     setSuccessMsg('');
-
     const formData = new FormData();
     formData.append('media', evidenceFile);
-
     try {
-      await uploadComplaintEvidenceRequest(anonymousId, formData);
-      setSuccessMsg('Evidence file uploaded and sanitized successfully.');
-      setEvidenceFile(null);
-      // Reload evidence and timeline
+      await uploadComplaintEvidenceRequest(caseId, formData, reporterToken);
       const [evidenceRes, timelineRes] = await Promise.all([
-        getComplaintEvidenceRequest(anonymousId),
-        getComplaintTimelineRequest(anonymousId)
+        getComplaintEvidenceRequest(caseId, reporterToken),
+        getComplaintTimelineRequest(caseId, reporterToken)
       ]);
       setEvidenceList(evidenceRes.data.evidenceList);
       setTimeline(timelineRes.data.history);
-      e.target.reset();
-    } catch (err) {
-      setErrorMsg(err.message || 'Evidence upload failed.');
+      setEvidenceFile(null);
+      setSuccessMsg('Evidence was received by the private vault. Its current review status is shown below.');
+      event.target.reset();
+    } catch (error) {
+      if (error.code === 'REPORTER_ACCESS_EXPIRED') {
+        clearAccess('Your case access session expired. Enter both credentials to unlock it again.');
+      } else {
+        setErrorState({ type: 'upload', message: error.message });
+      }
     } finally {
       setIsUploading(false);
     }
   }
 
-  async function handleSendChat(e) {
-    e.preventDefault();
-    if (!chatInput.trim()) return;
+  async function handleEvidenceDownload(file) {
+    if (!file.evidenceId || file.lifecycleStatus !== 'available') return;
+    setDownloadingEvidenceId(file.evidenceId);
+    setErrorState(null);
+    try {
+      const { blob } = await downloadComplaintEvidenceRequest(caseId, file.evidenceId, reporterToken);
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = file.originalName || `evidence${file.detectedExtension || ''}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      if (error.status === 401) {
+        clearAccess('Your case access session expired. Enter both credentials to unlock it again.');
+      } else {
+        const safeMessages = {
+          403: 'You are not authorized to download this evidence.',
+          404: 'This evidence is unavailable.',
+          409: 'This evidence is not currently available or failed integrity verification.',
+          422: 'The evidence request could not be processed.'
+        };
+        setErrorState({ type: 'download', message: safeMessages[error.status] || error.message });
+      }
+    } finally {
+      setDownloadingEvidenceId(null);
+    }
+  }
 
+  async function handleSendChat(event) {
+    event.preventDefault();
+    if (!chatInput.trim()) return;
     setIsSendingChat(true);
     try {
-      const response = await sendChatMessageRequest(null, anonymousId, chatInput.trim());
-      const newMsg = response.data.message;
-      setMessages((prev) => [...prev, newMsg]);
+      const clientMessageId = crypto.randomUUID();
+      const result = chatSocketRef.current?.connected
+        ? await sendRealtimeMessage(chatSocketRef.current, {
+          caseId, text: chatInput.trim(), clientMessageId
+        })
+        : await sendChatMessageRequest(reporterToken, caseId, chatInput.trim(), {
+          clientMessageId
+        }).then((response) => ({ message: response.data.message }));
+      mergeMessage(result.message);
       setChatInput('');
-    } catch (err) {
-      setErrorMsg(err.message || 'Failed to send chat message.');
+    } catch (error) {
+      if (error.code === 'REPORTER_ACCESS_EXPIRED') {
+        clearAccess('Your case access session expired. Enter both credentials to unlock it again.');
+      } else {
+        setErrorState({ type: 'chat', message: error.message });
+      }
     } finally {
       setIsSendingChat(false);
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="page-shell py-12 text-center">
-        <div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-teal-500 border-r-transparent" />
-        <p className="mt-4 text-brand-700">Loading case timeline details...</p>
-      </div>
-    );
-  }
-
-  if (errorMsg && !complaint) {
+  if (!reporterToken || !complaint) {
     return (
       <div className="page-shell py-12">
-        <div className="surface-panel p-8 text-center max-w-xl mx-auto">
-          <p className="text-xl font-semibold text-rose-700">Error Loading Case</p>
-          <p className="mt-3 text-sm text-brand-600">{errorMsg}</p>
-          <Link to="/" className="button-primary mt-6 inline-block">
-            Go back to homepage
-          </Link>
-        </div>
+        <section className="surface-panel mx-auto max-w-xl p-7 sm:p-9">
+          <p className="eyebrow">Private case access</p>
+          <h1 className="mt-3 text-3xl font-semibold text-brand-950">Unlock your case</h1>
+          <p className="mt-3 text-sm leading-6 text-brand-600">
+            Enter the case ID and reporter access secret from your recovery card. Neither value is
+            saved in browser storage or added to the URL.
+          </p>
+          {errorState ? (
+            <div className="mt-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700" role="alert">
+              {errorState.message}
+            </div>
+          ) : null}
+          <form onSubmit={handleUnlock} className="mt-6 space-y-4">
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-brand-900">Case ID</span>
+              <input
+                required
+                autoComplete="off"
+                value={credentials.caseId}
+                onChange={(event) => setCredentials((current) => ({ ...current, caseId: event.target.value }))}
+                className="field-input"
+                placeholder="anon-..."
+              />
+            </label>
+            <label className="block">
+              <span className="mb-2 block text-sm font-semibold text-brand-900">Reporter access secret</span>
+              <input
+                required
+                type="password"
+                autoComplete="off"
+                value={credentials.accessSecret}
+                onChange={(event) => setCredentials((current) => ({ ...current, accessSecret: event.target.value }))}
+                className="field-input"
+              />
+            </label>
+            <button type="submit" disabled={isUnlocking} className="button-primary w-full">
+              {isUnlocking || isLoading ? 'Verifying access...' : 'Unlock case'}
+            </button>
+          </form>
+          <p className="mt-4 text-xs leading-5 text-brand-500">
+            There is no automatic “forgot secret” flow. Legacy cases created before reporter
+            credentials were introduced are locked from anonymous access.
+          </p>
+        </section>
       </div>
     );
   }
-
-  const statusProgress = {
-    submitted: 1,
-    'under-review': 2,
-    resolved: 3,
-    rejected: 3
-  };
-
-  const currentStep = statusProgress[complaint.status] || 1;
 
   return (
     <div className="page-shell py-8 sm:py-10">
-      <div className="mb-6">
-        <Link to="/" className="text-sm font-semibold text-brand-700 hover:underline">
-          &larr; Back to Home
+      {inactivity.secondsRemaining != null ? (
+        <AccessibleDialog title={t('lock.title')} onClose={inactivity.continueSession}>
+          <p className="mt-3" aria-live="assertive">
+            {t('lock.warning', { seconds: inactivity.secondsRemaining })}
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <button type="button" className="button-primary" autoFocus
+              onClick={inactivity.continueSession}>{t('lock.continue')}</button>
+            <button type="button" className="button-secondary"
+              onClick={inactivity.lockNow}>{t('lock.now')}</button>
+          </div>
+        </AccessibleDialog>
+      ) : null}
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <Link to="/" onClick={() => clearAccess()} className="text-sm font-semibold text-brand-700 hover:underline">
+          &larr; Exit case
         </Link>
+        <button type="button" onClick={() => clearAccess()} className="button-secondary">
+          Lock case
+        </button>
       </div>
-
+      {errorState ? <div className="mb-5 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{errorState.message}</div> : null}
       <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-        {/* Left Side: Milestones, Timeline, Evidence */}
         <div className="space-y-6">
-          {/* Milestone Status Tracker */}
           <section className="surface-panel p-6 sm:p-8">
-            <p className="eyebrow">Case Tracking Reference: {complaint.anonymousId}</p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight text-brand-950">
-              Investigation Progress Tracker
-            </h1>
-
-            {/* Stepper Progress Bar */}
-            <div className="mt-8 relative flex items-center justify-between">
-              <div className="absolute left-0 right-0 h-1 bg-brand-100 -z-10" />
-              <div
-                className="absolute left-0 h-1 bg-teal-500 -z-10 transition-all duration-500"
-                style={{ width: `${((currentStep - 1) / 2) * 100}%` }}
-              />
-
-              {[
-                { label: 'Submitted', desc: 'Case received' },
-                { label: 'Under Review', desc: 'Assigned and assessed' },
-                { label: complaint.status === 'rejected' ? 'Rejected' : 'Resolved', desc: 'Finalized case' }
-              ].map((step, idx) => {
-                const stepNum = idx + 1;
-                const isActive = stepNum <= currentStep;
-                const isFinal = idx === 2;
-                let stepBg = 'bg-white border-brand-200 text-brand-400';
-                if (isActive) {
-                  stepBg = isFinal && complaint.status === 'rejected'
-                    ? 'bg-rose-500 border-rose-500 text-white'
-                    : 'bg-teal-500 border-teal-500 text-white';
-                }
-
-                return (
-                  <div key={step.label} className="flex flex-col items-center">
-                    <div className={`h-8 w-8 rounded-full border-2 flex items-center justify-center font-bold text-sm ${stepBg}`}>
-                      {stepNum}
-                    </div>
-                    <p className="mt-2 text-xs font-semibold text-brand-950">{step.label}</p>
-                    <p className="text-[10px] text-brand-500 hidden sm:block">{step.desc}</p>
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-
-          {/* Action Log History Timeline */}
-          <section className="surface-panel p-6 sm:p-8">
-            <h2 className="text-xl font-semibold text-brand-950">Case Timeline Log</h2>
-            <div className="mt-6 border-l-2 border-brand-100 pl-4 space-y-6">
-              {timeline.map((item) => (
-                <div key={item._id} className="relative">
-                  <div className="absolute -left-[23px] top-1.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-teal-500" />
-                  <p className="text-xs text-brand-500">
-                    {new Date(item.createdAt).toLocaleString()} &bull; {item.userRole.toUpperCase()}
-                  </p>
-                  <p className="text-sm font-semibold text-brand-950 mt-1">{item.action.replace('_', ' ').toUpperCase()}</p>
-                  <p className="text-sm text-brand-700 mt-1">{item.description}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* Evidence Vault Manager */}
-          <section className="surface-panel p-6 sm:p-8">
-            <h2 className="text-xl font-semibold text-brand-950">Secure Case Evidence</h2>
-            <p className="mt-1 text-xs text-brand-600">
-              Files uploaded here undergo EXIF metadata sanitization to protect user identities.
+            <p className="eyebrow">Case reference: {complaint.caseId}</p>
+            <h1 className="mt-3 text-3xl font-semibold text-brand-950">Case status</h1>
+            <p className="mt-4 text-lg font-semibold capitalize text-teal-700">{complaint.status.replace('-', ' ')}</p>
+            {triage ? <div className={`mt-4 rounded-2xl border p-4 ${
+              triage.severity === 'critical' ? 'border-rose-300 bg-rose-50' : 'border-brand-100 bg-brand-50'
+            }`}>
+              <p className="font-semibold capitalize text-brand-950">Initial severity: {triage.severity}</p>
+              <p className="mt-1 text-sm text-brand-700">{triage.meaning}</p>
+              {triage.humanReviewPending ? <p className="mt-2 text-sm font-semibold">Human review is pending.</p> : null}
+              {triage.severity === 'critical' ? <p className="mt-3 text-sm font-semibold text-rose-800">
+                {triage.safetyGuidance || CRITICAL_SAFETY_GUIDANCE}
+              </p> : null}
+              <p className="mt-2 text-xs text-brand-600">{triage.initialAssessmentNotice}</p>
+              <p className="mt-2 text-sm font-semibold text-brand-800">
+                Workflow status: {triage.workflowStatus || 'Awaiting review'}
+              </p>
+              <p className="mt-1 text-xs text-brand-600">{triage.workflowNotice}</p>
+              <p className="mt-1 text-xs text-brand-600">SatyaShield is not an emergency or dispatch service.</p>
+            </div> : null}
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-brand-700">{complaint.description}</p>
+            <p className="text-sm text-brand-600 mb-2">
+              Support routing: {String(complaint.supportRoutingStatus || 'pending_admin_review').replaceAll('_', ' ')}
             </p>
-
-            {successMsg && (
-              <div className="mt-4 rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-sm text-emerald-700">
-                {successMsg}
-              </div>
-            )}
-
-            {/* List Evidence */}
-            <div className="mt-6 grid gap-4 sm:grid-cols-2">
-              {evidenceList.map((file) => (
-                <div key={file._id} className="rounded-2xl border border-brand-100 p-4 bg-white/50 flex flex-col justify-between shadow-sm">
-                  <div>
-                    <div className="flex justify-between items-start gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-brand-500">
-                        {file.category}
-                      </span>
-                      {file.isDuplicate && (
-                        <span className="rounded bg-rose-50 border border-rose-200 text-[10px] text-rose-700 px-1 font-medium">
-                          Duplicate
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm font-semibold text-brand-900 truncate">
-                      {file.originalName}
-                    </p>
-                    <p className="text-xs text-brand-500">
-                      Size: {Math.round(file.fileSize / 1024)} KB
-                    </p>
-                  </div>
-                  <a
-                    href={file.fileUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 text-xs font-semibold text-teal-700 hover:underline"
-                  >
-                    Download File &rarr;
-                  </a>
-                </div>
-              ))}
-            </div>
-
-            {/* Add Evidence secure form */}
-            <form onSubmit={handleEvidenceUpload} className="mt-6 pt-6 border-t border-brand-100 flex flex-col sm:flex-row items-center gap-3">
-              <input
-                required
-                type="file"
-                onChange={(e) => setEvidenceFile(e.target.files?.[0] || null)}
-                className="block w-full text-xs text-brand-700 file:mr-4 file:rounded-full file:border-0 file:bg-brand-950 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white hover:file:bg-brand-900"
-              />
-              <button
-                type="submit"
-                disabled={isUploading || !evidenceFile}
-                className="button-primary py-2.5 px-6 shrink-0 disabled:opacity-50"
-              >
-                {isUploading ? 'Sanitizing...' : 'Upload Evidence'}
-              </button>
-            </form>
+            {complaint.assignedNgo ? (
+              <p className="mt-4 text-sm text-brand-600">
+                Assigned support organization: <strong>{complaint.assignedNgo.name}</strong>
+                {complaint.assignedNgo.coverageLabel ? ` (${complaint.assignedNgo.coverageLabel})` : ''}
+              </p>
+            ) : null}
           </section>
-        </div>
-
-        {/* Right Side: NGO Details & Anonymous Chat */}
-        <div className="space-y-6">
-          {/* Responding NGO Card */}
-          <section className="surface-panel p-6">
-            <h3 className="text-lg font-bold text-brand-950">Assigned Responding NGO</h3>
-            {complaint && complaint.assignedNgo && complaint.assignedNgo.ngoId ? (
-              <div className="mt-4 p-4 rounded-2xl bg-teal-50/50 border border-teal-100">
-                <p className="font-semibold text-brand-950 text-base">{complaint.assignedNgo.name}</p>
-                <p className="text-xs text-teal-800 font-medium mt-1">Coverage: {complaint.assignedNgo.city}, {complaint.assignedNgo.district}</p>
-                <div className="mt-3 pt-3 border-t border-teal-100 text-sm text-brand-700 space-y-1">
-                  <p>Phone: {complaint.assignedNgo.contactPhone}</p>
-                  <p>Email: {complaint.assignedNgo.contactEmail}</p>
+          <section className="surface-panel border-rose-200 p-6 sm:p-8">
+            <h2 className="text-xl font-semibold text-rose-950">SOS safety request</h2>
+            <p className="mt-2 text-sm leading-6 text-rose-800">
+              SatyaShield may not contact police, ambulance services, emergency responders or an
+              NGO automatically. If immediate danger exists, move to safety where possible and
+              deliberately contact an appropriate local emergency service or trusted person.
+            </p>
+            {!sos || ['cancelled', 'resolved', 'expired', 'closed', 'false_alarm_marked'].includes(sos.state) ? (
+              !showSosConfirmation ? (
+                <button type="button" className="button-primary mt-4"
+                  onClick={() => setShowSosConfirmation(true)}>
+                  Start SOS safety request
+                </button>
+              ) : (
+                <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                  <label className="flex items-start gap-3 text-sm text-rose-950">
+                    <input type="checkbox" checked={sosNoticeAccepted}
+                      onChange={(event) => setSosNoticeAccepted(event.target.checked)} />
+                    <span>I understand this is an internal safety request, not guaranteed emergency dispatch.</span>
+                  </label>
+                  <div className="mt-4 flex gap-3">
+                    <button type="button" className="button-primary"
+                      disabled={!sosNoticeAccepted} onClick={handleStartSos}>
+                      Begin cancel countdown
+                    </button>
+                    <button type="button" className="button-secondary"
+                      onClick={() => setShowSosConfirmation(false)}>Back</button>
+                  </div>
                 </div>
+              )
+            ) : null}
+            {sos?.state === 'confirmation_pending' ? (
+              <div className="mt-4 rounded-2xl border border-rose-200 p-4" aria-live="polite">
+                <p className="font-semibold text-rose-950">
+                  Cancellation countdown: {sosSecondsRemaining} seconds
+                </p>
+                <label className="mt-3 flex items-start gap-3 text-sm text-brand-700">
+                  <input type="checkbox" checked={shareOneTimeLocation}
+                    onChange={(event) => setShareOneTimeLocation(event.target.checked)} />
+                  <span>Optionally share an approximate one-time device location. This is off by default.</span>
+                </label>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button type="button" className="button-secondary" onClick={handleCancelSos}>
+                    Cancel request
+                  </button>
+                  <button type="button" className="button-primary"
+                    disabled={sosSecondsRemaining > 0} onClick={handleActivateSos}>
+                    Create internal safety request
+                  </button>
+                </div>
+              </div>
+            ) : null}
+            {sos && !['confirmation_pending', 'cancelled'].includes(sos.state) ? (
+              <div className="mt-4 rounded-2xl border border-brand-100 bg-brand-50 p-4">
+                <p className="font-semibold capitalize text-brand-950">
+                  Status: {sos.state.replaceAll('_', ' ')}
+                </p>
+                <p className="mt-2 text-sm text-brand-700">{sos.statusNotice}</p>
+                <p className="mt-2 text-xs text-brand-600">
+                  “Sent” does not mean received, and acknowledgment does not guarantee action.
+                </p>
+              </div>
+            ) : null}
+          </section>
+          <section className="surface-panel p-6 sm:p-8">
+            <h2 className="text-xl font-semibold text-brand-950">Verified helplines</h2>
+            {helplines.length ? (
+              <div className="mt-4 space-y-3">
+                {helplines.map((entry) => (
+                  <article key={entry.helplineId} className="rounded-2xl border border-brand-100 p-4">
+                    <p className="font-semibold text-brand-950">{entry.displayName}</p>
+                    <p className="mt-1 text-sm text-brand-700">{entry.availabilityWording}</p>
+                    <a className="button-secondary mt-3 inline-flex"
+                      href={entry.contactMethod === 'website'
+                        ? entry.contactValue : `tel:${entry.contactValue}`}>
+                      Contact deliberately
+                    </a>
+                    <p className="mt-2 text-xs text-brand-500">{entry.safeDisclaimer}</p>
+                  </article>
+                ))}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-brand-600 bg-brand-50 rounded-2xl p-4">
-                Routing algorithm matching regional NGO coordinators...
+              <p className="mt-3 text-sm text-brand-600">
+                No currently verified directory entry is available for this region. SatyaShield
+                will not invent or display an expired number.
               </p>
             )}
           </section>
-
-          {/* Secure Anonymous Chat thread */}
-          <section className="surface-panel p-6 flex flex-col h-[500px]">
-            <div className="border-b border-brand-100 pb-3 flex justify-between items-center">
-              <div>
-                <h3 className="text-lg font-bold text-brand-950">Secure Chat Panel</h3>
-                <p className="text-[10px] text-brand-500 uppercase tracking-wider">End-to-End Encrypted Tunnel</p>
-              </div>
-              <div className="rounded bg-teal-400/10 px-2 py-0.5 text-[10px] font-bold text-teal-800">
-                Connected
-              </div>
+          <section className="surface-panel p-6 sm:p-8">
+            <h2 className="text-xl font-semibold text-brand-950">Case timeline</h2>
+            <div className="mt-5 space-y-4">
+              {timeline.length ? timeline.map((item, index) => (
+                <article key={`${item.createdAt}-${item.action}-${index}`} className="rounded-2xl border border-brand-100 p-4">
+                  <p className="text-xs text-brand-500">{new Date(item.createdAt).toLocaleString()}</p>
+                  <p className="mt-1 text-sm font-semibold capitalize text-brand-950">{item.action.replaceAll('_', ' ')}</p>
+                  <p className="mt-1 text-sm text-brand-700">{item.description}</p>
+                </article>
+              )) : <p className="text-sm text-brand-600">No reporter-visible updates yet.</p>}
             </div>
-
-            {/* Message Area */}
-            <div className="flex-1 overflow-y-auto my-4 space-y-3 pr-1">
-              {messages.length === 0 ? (
-                <p className="text-xs text-brand-600 text-center py-8">
-                  No chat messages yet. Type in the box below to ask questions or send notes to assigned operators.
-                </p>
-              ) : (
-                messages.map((msg) => {
-                  const isVictim = msg.senderRole === 'victim';
-                  return (
-                    <div
-                      key={msg.id}
-                      className={`flex flex-col max-w-[85%] ${isVictim ? 'ml-auto items-end' : 'mr-auto items-start'}`}
+          </section>
+          <section className="surface-panel p-6 sm:p-8">
+            <h2 className="text-xl font-semibold text-brand-950">Evidence received</h2>
+            <p className="mt-2 text-xs text-brand-600">
+              Files are held in the private evidence vault. Download is available only while your case session is unlocked and the file is available.
+            </p>
+            {successMsg ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{successMsg}</div> : null}
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              {evidenceList.map((file, index) => (
+                <article key={`${file.createdAt}-${file.originalName}-${index}`} className="rounded-2xl border border-brand-100 p-4">
+                  <p className="text-xs font-semibold uppercase text-brand-500">{file.category}</p>
+                  <p className="mt-1 truncate text-sm font-semibold text-brand-900">{file.originalName}</p>
+                  <p className="mt-1 text-xs text-brand-500">{Math.round(file.fileSize / 1024)} KB</p>
+                  <p className="mt-1 text-xs font-semibold capitalize text-brand-600">
+                    {file.lifecycleStatus.replaceAll('_', ' ')}
+                    {file.scanStatus === 'not_configured' ? ' · malware scanning not configured' : ''}
+                  </p>
+                  {file.lifecycleStatus === 'available' && file.downloadPath ? (
+                    <button
+                      type="button"
+                      onClick={() => handleEvidenceDownload(file)}
+                      disabled={downloadingEvidenceId === file.evidenceId}
+                      className="button-secondary mt-3 px-3 py-1.5 text-xs"
                     >
-                      <span className="text-[9px] text-brand-600 uppercase mb-0.5 px-1">
-                        {isVictim ? 'You (Reporter)' : `${msg.senderName} (${msg.senderRole.toUpperCase()})`}
-                      </span>
-                      <div
-                        className={`rounded-2xl px-4 py-2.5 text-sm ${
-                          isVictim ? 'bg-brand-950 text-white rounded-tr-none' : 'bg-brand-50 border border-brand-100 text-brand-950 rounded-tl-none'
-                        }`}
-                      >
-                        {msg.text}
-                      </div>
-                      <span className="text-[8px] text-brand-500 mt-0.5 px-1">
-                        {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
+                      {downloadingEvidenceId === file.evidenceId ? 'Downloading...' : 'Authorized download'}
+                    </button>
+                  ) : null}
+                </article>
+              ))}
             </div>
-
-            {/* Input form */}
-            <form onSubmit={handleSendChat} className="flex gap-2">
-              <input
-                required
-                type="text"
-                value={chatInput}
-                onChange={(e) => setChatInput(e.target.value)}
-                placeholder="Type secure anonymous message..."
-                className="field-input py-2"
-              />
-              <button
-                type="submit"
-                disabled={isSendingChat || !chatInput.trim()}
-                className="button-primary px-4 py-2 text-xs"
-              >
-                Send
+            <form onSubmit={handleEvidenceUpload} className="mt-6 flex flex-col gap-3 border-t border-brand-100 pt-6 sm:flex-row">
+              <input required type="file" accept=".jpg,.jpeg,.png,.webp" onChange={(event) => setEvidenceFile(event.target.files?.[0] || null)} className="block w-full text-xs text-brand-700" />
+              <button type="submit" disabled={isUploading || !evidenceFile} className="button-primary shrink-0">
+                {isUploading ? 'Validating and encrypting...' : 'Upload evidence'}
               </button>
             </form>
           </section>
         </div>
+        <section className="surface-panel flex h-[560px] flex-col p-6">
+          <h2 className="text-xl font-semibold text-brand-950">Case chat</h2>
+          <p className="mt-1 text-xs text-brand-600" aria-live="polite">
+            Real-time connection: {chatConnectionState.replaceAll('_', ' ')}.
+            Messages are server-persisted; delivery is not guaranteed.
+          </p>
+          <p className="mt-1 text-xs text-brand-500">Encrypted in transit and at rest; this is not end-to-end encryption.</p>
+          <div className="my-4 flex-1 space-y-3 overflow-y-auto">
+            {messages.map((message, index) => (
+              <article key={`${message.createdAt}-${index}`} className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${message.senderRole === 'victim' ? 'ml-auto bg-brand-950 text-white' : 'bg-brand-50 text-brand-950'}`}>
+                <p className="mb-1 text-[10px] uppercase opacity-70">{message.senderLabel}</p>
+                <p>{message.text}</p>
+              </article>
+            ))}
+          </div>
+          <form onSubmit={handleSendChat} className="flex gap-2">
+            <input required value={chatInput} onChange={(event) => setChatInput(event.target.value)} className="field-input" placeholder="Type a case message..." />
+            <button type="submit" disabled={isSendingChat || !chatInput.trim()} className="button-primary">Send</button>
+          </form>
+        </section>
       </div>
     </div>
   );

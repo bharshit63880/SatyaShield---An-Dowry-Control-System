@@ -1,6 +1,6 @@
-import crypto from 'crypto';
-
 import { COMPLAINT_RISK_LEVELS, COMPLAINT_STATUSES } from '../models/complaint.model.js';
+import { TRIAGE_SEVERITIES } from '../models/triage-assessment.model.js';
+import { env } from '../config/env.js';
 import { ApiError } from '../utils/ApiError.js';
 import { parsePagination, parseSearch, parseSort } from '../utils/query.js';
 
@@ -30,22 +30,6 @@ function normalizeEnum(value, allowedValues, fallback = 'all') {
 
 function containsExactGps(value) {
   return /-?\d{1,3}\.\d+\s*,\s*-?\d{1,3}\.\d+/.test(value);
-}
-
-function buildComplaintFingerprint({ description, city, district, locationConsent, file }) {
-  return crypto
-    .createHash('sha256')
-    .update(
-      JSON.stringify({
-        description,
-        city,
-        district,
-        locationConsent,
-        mimeType: file?.mimetype ?? 'none',
-        fileSize: file?.size ?? 0
-      })
-    )
-    .digest('hex');
 }
 
 export function validateLoginRequest(req, _res, next) {
@@ -88,9 +72,63 @@ export function validateComplaintSubmission(req, _res, next) {
   const district = normalizeText(req.body.district, 120);
   const website = normalizeText(req.body.website, 255);
   const locationConsent = parseBoolean(req.body.locationConsent);
+  const privacyAcknowledged = parseBoolean(req.body.privacyAcknowledged);
+  const aiConsent = parseBoolean(req.body.aiConsent);
+  const complaintCategory = normalizeText(req.body.complaintCategory, 60) || 'unknown';
+  const preferredLanguage = normalizeText(req.body.preferredLanguage, 40).toLowerCase() || null;
+  const triageAnswer = (field) => {
+    const value = normalizeText(req.body[field], 30).toLowerCase() || 'unknown';
+    return ['yes', 'no', 'unknown', 'prefer_not_to_say'].includes(value) ? value : null;
+  };
+  const triageInput = {
+    dangerHappeningNow: triageAnswer('dangerHappeningNow'),
+    immediateThreatToLife: triageAnswer('immediateThreatToLife'),
+    weaponInvolved: triageAnswer('weaponInvolved'),
+    seriousInjuryPresent: triageAnswer('seriousInjuryPresent'),
+    currentlyConfined: triageAnswer('currentlyConfined'),
+    threatEscalating: triageAnswer('threatEscalating'),
+    stalkingOrRepeatedContact: triageAnswer('stalkingOrRepeatedContact'),
+    vulnerablePersonAtRisk: triageAnswer('vulnerablePersonAtRisk'),
+    urgentMedicalHelpNeeded: triageAnswer('urgentMedicalHelpNeeded'),
+    canSafelyContinue: triageAnswer('canSafelyContinue'),
+    reporterUrgency: normalizeText(req.body.reporterUrgency, 30).toLowerCase() || 'unknown',
+    incidentRecency: normalizeText(req.body.incidentRecency, 30).toLowerCase() || 'unknown',
+    policyVersion: env.triagePolicyVersion,
+    inputSchemaVersion: env.triageInputSchemaVersion
+  };
 
   if (website) {
     return next(new ApiError(400, 'Spam submission blocked.', { code: 'SPAM_DETECTED' }));
+  }
+
+  if (
+    !privacyAcknowledged ||
+    req.body.privacyNoticeVersion !== env.privacyNoticeVersion ||
+    req.body.consentVersion !== env.consentVersion
+  ) {
+    return next(
+      new ApiError(400, 'Acknowledge the current privacy notice before submitting.', {
+        code: 'PRIVACY_ACKNOWLEDGEMENT_REQUIRED'
+      })
+    );
+  }
+  if (!['dowry_harassment', 'domestic_violence', 'legal_support', 'safety_planning'].includes(complaintCategory)) {
+    return next(new ApiError(400, 'Select a supported complaint category.', {
+      code: 'COMPLAINT_CATEGORY_INVALID'
+    }));
+  }
+  if (Object.values(triageInput).some((value) => value === null) ||
+      !['routine', 'concerned', 'urgent', 'unknown', 'prefer_not_to_say'].includes(triageInput.reporterUrgency) ||
+      !['happening_now', 'within_24_hours', 'within_week', 'historical', 'unknown', 'prefer_not_to_say']
+        .includes(triageInput.incidentRecency)) {
+    return next(new ApiError(422, 'One or more safety-question answers are invalid.', {
+      code: 'TRIAGE_INPUT_INVALID'
+    }));
+  }
+  if (req.body.severity !== undefined || req.body.riskScore !== undefined) {
+    return next(new ApiError(422, 'Severity is determined by the server.', {
+      code: 'CLIENT_SEVERITY_NOT_ALLOWED'
+    }));
   }
 
   if (!description && !req.file) {
@@ -129,21 +167,45 @@ export function validateComplaintSubmission(req, _res, next) {
               district
             }
           : null,
-      submissionFingerprintHash: buildComplaintFingerprint({
-        description,
-        city,
-        district,
-        locationConsent,
-        file: req.file
-      })
+      privacyAcknowledged,
+      privacyNoticeVersion: env.privacyNoticeVersion,
+      consentVersion: env.consentVersion,
+      aiConsent,
+      aiDisclosureVersion: aiConsent ? env.aiDisclosureVersion : null,
+      complaintCategory,
+      preferredLanguage
+      ,triageInput
     }
+  };
+  next();
+}
+
+export function validateReporterAccessExchange(req, _res, next) {
+  const caseId = normalizeText(req.body.caseId, 100);
+  const accessSecret = String(req.body.accessSecret ?? '').trim();
+
+  if (
+    !/^anon-[0-9a-f-]{36}$/i.test(caseId) ||
+    accessSecret.length < 32 ||
+    accessSecret.length > 256
+  ) {
+    return next(
+      new ApiError(401, 'Case access credentials are invalid.', {
+        code: 'REPORTER_ACCESS_INVALID'
+      })
+    );
+  }
+
+  req.validated = {
+    ...req.validated,
+    reporterAccess: { caseId, accessSecret }
   };
   next();
 }
 
 export function validateDashboardComplaintFilter(req, _res, next) {
   const status = normalizeEnum(req.query.status, COMPLAINT_STATUSES, 'all');
-  const riskLevel = normalizeEnum(req.query.riskLevel, COMPLAINT_RISK_LEVELS, 'all');
+  const riskLevel = normalizeEnum(req.query.riskLevel, TRIAGE_SEVERITIES, 'all');
 
   if (!status) {
     return next(
@@ -270,7 +332,10 @@ export function validateEscalationQuery(req, _res, next) {
   const { page, limit, skip } = parsePagination(req.query);
   const status = normalizeText(req.query.status, 40);
 
-  if (status && !['pending', 'resolved'].includes(status)) {
+  if (status && ![
+    'created', 'pending', 'acknowledged', 'action_in_progress',
+    'resolved', 'cancelled', 'superseded'
+  ].includes(status)) {
     return next(new ApiError(400, 'Invalid escalation status filter.', { code: 'ESCALATION_INVALID_STATUS' }));
   }
 
@@ -408,8 +473,8 @@ export function validateRegistrationRequest(req, _res, next) {
     return next(new ApiError(400, 'Enter a valid email address.', { code: 'AUTH_INVALID_EMAIL' }));
   }
 
-  if (password.length < 8) {
-    return next(new ApiError(400, 'Password must be at least 8 characters long.', { code: 'AUTH_INVALID_PASSWORD_LENGTH' }));
+  if (password.length < 12 || Buffer.byteLength(password, 'utf8') > 256) {
+    return next(new ApiError(400, 'Password must be 12 to 256 bytes long.', { code: 'AUTH_INVALID_PASSWORD_LENGTH' }));
   }
 
   const allowedRoles = ['user'];
@@ -445,8 +510,8 @@ export function validateResetPasswordRequest(req, _res, next) {
     return next(new ApiError(400, 'Token and new password are required.', { code: 'AUTH_REQUIRED_FIELDS' }));
   }
 
-  if (newPassword.length < 8) {
-    return next(new ApiError(400, 'Password must be at least 8 characters long.', { code: 'AUTH_INVALID_PASSWORD_LENGTH' }));
+  if (newPassword.length < 12 || Buffer.byteLength(newPassword, 'utf8') > 256) {
+    return next(new ApiError(400, 'Password must be 12 to 256 bytes long.', { code: 'AUTH_INVALID_PASSWORD_LENGTH' }));
   }
 
   req.validated = {

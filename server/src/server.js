@@ -4,22 +4,26 @@ import app from './app.js';
 import { connectDatabase } from './config/db.js';
 import { env } from './config/env.js';
 import { ensureRuntimeDirectories } from './config/paths.js';
-import { ensureAdminUser } from './services/auth.service.js';
+import { logEvent } from './services/logger.service.js';
+import { createEscalationScheduler } from './services/escalation-scheduler.service.js';
+import { createSocketChatServer } from './services/socket-chat.service.js';
 
 async function bootstrap() {
   await connectDatabase();
   await ensureRuntimeDirectories();
-  await ensureAdminUser();
 
   const server = http.createServer(app);
+  const socketServer = createSocketChatServer(server);
+  const escalationScheduler = createEscalationScheduler();
+  await escalationScheduler.start();
   const listenHost = env.host;
-  const publicOrigin = env.serverPublicUrl || `http://${listenHost}:${env.port}`;
-
   server.listen(env.port, listenHost, () => {
-    console.log(`Server listening on ${publicOrigin}`);
+    logEvent('info', 'server_started', { port: env.port });
   });
 
-  const shutdown = () => {
+  const shutdown = async () => {
+    await escalationScheduler.stop();
+    await socketServer?.close();
     server.close(() => {
       process.exit(0);
     });
@@ -29,7 +33,7 @@ async function bootstrap() {
   process.on('SIGTERM', shutdown);
 }
 
-bootstrap().catch((error) => {
-  console.error('Failed to start server:', error);
+bootstrap().catch(() => {
+  logEvent('error', 'server_start_failed');
   process.exit(1);
 });

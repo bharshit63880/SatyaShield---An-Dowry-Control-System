@@ -1,125 +1,144 @@
-# 🛡️ SatyaShield: Advanced Dowry Control & Protection System
+# SatyaShield
 
-SatyaShield is an enterprise-grade, secure, and completely anonymous reporting and crisis-intervention platform designed to combat dowry harassment and violence. Built using the MERN stack, the platform connects victims and whistleblowers with real-time support networks, non-governmental organizations (NGOs), law enforcement officials, and legal aid—while preserving absolute identity confidentiality.
+SatyaShield is a privacy-focused MERN application for reporting dowry harassment, tracking a case with complaint-scoped credentials, and coordinating authorized NGO, investigator, and administrative workflows.
 
----
+> SatyaShield is not an emergency-dispatch service. It does not guarantee police, ambulance, NGO, message-delivery, or response outcomes.
 
-## ⚡ Current Project Status: `In Progress (~50% Complete)`
-The core architectural shell, database schemas, secure utility functions, and foundational routing layers have been established on both the client and server sides. We are actively finalizing the real-time websocket integrations, UI/UX polish, and AI-powered evaluation layers.
+## Project progress
 
----
+### Engineering roadmap: approximately 65% complete
 
-## 🚀 Key Features
+This percentage measures the approved 16-phase engineering roadmap—not production readiness.
 
-### 👤 1. Strict Anonymous Reporting
-* **Zero-Trace Profiling:** File fully detailed complaints without revealing names, IP addresses, or tracking metadata.
-* **Cryptographic Hashing & Salting:** Built-in cryptographic layers secure sensitive user interactions.
-* **Media Privacy Protocols:** Automatic scrubbing of EXIF metadata from uploaded images/videos to prevent location leaks through file properties.
+| Work area | Status |
+|---|---|
+| Phases 1–10 | Verified with dedicated MongoDB Atlas runtime tests |
+| Phase 11 | Accessibility, Quick Exit, inactivity locking, and localization foundations implemented; full bilingual migration and full-stack browser E2E remain incomplete |
+| Phases 12–16 | Not started |
+| Production readiness | Not approved |
 
-### 🚨 2. Crisis & SOS Mechanics
-* **Instant Distress Signal:** A one-click SOS button on the dashboard coordinates rapid-response dispatch.
-* **Helpline Directory:** A localized registry of verified national and regional emergency helpline contacts.
+Completed and verified work includes reporter access security, resource-level authorization, the encrypted evidence vault, privacy hardening, staff authentication and MFA, NGO routing, deterministic triage, escalation scheduling, secure realtime chat, and internal-only SOS workflows.
 
-### 🏢 3. Intelligent NGO Routing & Escalation
-* **Automated Dispatch:** Incoming reports are processed through an internal `ngo-router.service` that assigns the case to an active NGO based on capacity and jurisdiction.
-* **Escalation Engine:** If an assigned investigator or NGO fails to act on a critical or high-risk case within a set timeline, the system automatically escalates the case to higher oversight panels.
+Remaining roadmap work includes complete English/Hindi coverage, full browser-driven E2E and manual accessibility review, notification-provider architecture, reviewed legal-information content, CI/security automation, production infrastructure hardening, and the final readiness review.
 
-### 🤖 4. Risk Prediction & Interactive Assistants
-* **Threat Matrix Evaluation:** Automated complaint-risk calculations classify the urgency of filings (Low, Medium, High, Critical) using explicit heuristics.
-* **Floating Assistant Widget:** An inline chatbot accessible across the user client for immediate legal literacy resources and emotional support.
+## Screenshots
 
----
+### Home
 
-## 🛠️ Tech Stack & Ecosystem
+![SatyaShield home screen](docs/screenshots/home.png)
 
-* **Frontend:** React.js, Vite, Tailwind CSS, React Router DOM
-* **Backend:** Node.js, Express.js
-* **Database:** MongoDB (using Mongoose ODM)
-* **Security & Auth:** JSON Web Tokens (JWT), Time-Based One-Time Passwords (TOTP), Cryptographic Sanitize/Escape Middlewares
-* **Hosting Configurations:** Production ready via `vercel.json` (Frontend) and `render.yaml` (Backend)
+### Anonymous complaint intake
 
----
+![SatyaShield anonymous complaint form](docs/screenshots/anonymous-report.png)
 
-## 🔮 Recommended Next-Gen Features To Implement
+### Authorized staff login
 
-To take SatyaShield to the absolute next level, we are introducing the following roadmap expansions:
+![SatyaShield operator login](docs/screenshots/operator-login.png)
 
-1. **AI-Driven Sentiment & Threat Scraper:** Integrate a local Large Language Model (LLM) or NLP framework into the `complaint-risk.service` to evaluate text descriptions for underlying high-danger patterns or explicit domestic threats, updating case urgency dynamically.
-2. **Decentralized Evidence Locker (IPFS):** Utilize interplanetary file system architectures to mirror uploaded files securely, preventing corrupt actors from erasing critical evidence out of central servers.
-3. **Automated Legal Document Draft Builder:** Allow victims to fill out simplified, conversational forms with the Chatbot to auto-generate fully drafted legal representations (such as Indian Dowry Prohibition Act notices).
-4. **Geo-Fenced Emergency Broadcast Circles:** Implement temporary, client-side geolocation sharing during active SOS states to notify authorized field-workers within a 5km radius instantly.
+## Implemented security architecture
 
----
+- Complaint-scoped reporter case ID and one-time access secret.
+- Only a keyed reporter-secret hash is stored.
+- Reporter and staff authentication remain separate.
+- Exact-case authorization for reporters, NGOs, investigators, admins, and superadmins.
+- Encrypted private evidence storage with lifecycle and integrity controls.
+- HttpOnly refresh cookies, CSRF protection, explicit CORS, token rotation, and reuse detection.
+- TOTP MFA, recovery codes, account-state enforcement, and session revocation.
+- Deterministic NGO eligibility, routing, capacity, assignment, and revocation.
+- Structured deterministic triage with Critical-case human review.
+- Versioned internal deadlines, escalation policies, and idempotent scheduler leasing.
+- Complaint-scoped Socket.IO chat with persistence and immediate authorization revocation.
+- Explicit SOS confirmation and cancellation with optional encrypted, minimized location.
+- Internal-only SOS routing; external emergency delivery remains disabled.
+- Reviewable helpline architecture with no unverified production entries.
+- Privacy-safe logs and audit allowlists.
+- External AI disabled and fail-closed.
 
-## 📁 Repository Structure
+Chat is not end-to-end encrypted. Evidence is not claimed to be malware-free. Complete anonymity, guaranteed deletion, legal certification, and production readiness are not claimed.
+
+## Technology
+
+- React 18, Vite, Tailwind CSS, React Router
+- Node.js and Express
+- MongoDB Atlas with Mongoose
+- Socket.IO
+- JWT, rotating refresh tokens, TOTP, AES-GCM, HMAC, and scrypt
+- Node test runner, Playwright, and axe-core
+
+## Local setup
+
+Requirements:
+
+- Node.js 20.12 or newer
+- npm
+- A dedicated development MongoDB database
+
+```bash
+git clone https://github.com/bharshit63880/SatyaShield.git
+cd SatyaShield
+npm install
+```
+
+Copy the example environment files and provision unique development secrets:
+
+```powershell
+Copy-Item server/.env.example server/.env
+Copy-Item client/.env.example client/.env
+```
+
+Never commit `.env` files or reuse development secrets in production.
+
+Start the frontend and backend:
+
+```bash
+npm run dev
+```
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:5000`
+
+## Validation
+
+```bash
+npm test
+npm run build
+npm run test:mongodb
+npm run test:e2e --workspace client
+```
+
+Current recorded verification:
+
+- MongoDB Atlas Phase 1–10 suites: 9/9 passed.
+- Local backend suite: 44 passed.
+- Client contract suite: 15/15 passed.
+- Focused desktop/mobile Chromium E2E and accessibility suite: 16/16 passed.
+- Automated serious/critical accessibility findings on tested public routes: zero.
+- Deterministic MFA authenticated-tag tamper trials: 5,000/5,000 passed.
+
+Phase 11 is not fully verified because complete bilingual migration and the required full-stack browser flows remain pending.
+
+## Important limitations
+
+- No production helplines are published.
+- No real external SOS or emergency-service delivery exists.
+- Socket.IO currently supports one application instance; multi-instance operation requires a shared adapter.
+- Real email delivery and deployed TLS-cookie behaviour are unverified.
+- Password history is not implemented.
+- Short-lived revoked access tokens may remain usable until expiry.
+- A production malware scanner is not configured.
+- Production secrets, monitoring, backup restoration, legal review, and manual accessibility review remain outstanding.
+- Known dependency-audit findings require manual review; no breaking automatic audit fix has been applied.
+
+## Repository structure
 
 ```text
-SatyaShield---An-Dowry-Control-System/
-├── client/                     # React Frontend Application
-│   ├── src/
-│   │   ├── app/                # App configuration and routing definition
-│   │   ├── components/         # Reusable UI, Layout elements, and Chatbot elements
-│   │   ├── context/            # Auth and Global State providers
-│   │   ├── hooks/              # Custom React hooks (e.g., useAuth)
-│   │   ├── pages/              # Primary View containers (Dashboard, Tracking, Forms)
-│   │   ├── services/           # Axios Base API connection managers
-│   │   └── styles/             # Global Tailwind stylesheets
-│   ├── tailwind.config.js
-│   └── vercel.json
-│
-└── server/                     # Node.js/Express Backend Core
-    ├── src/
-    │   ├── config/             # Database parameters, Rate Limiters, and System Constants
-    │   ├── controllers/        # Request handlers (Auth, Complaints, NGO controls)
-    │   ├── data/               # Static dataset configurations (Mock NGOs)
-    │   ├── middlewares/        # Audit Logging, Sanitizers, Token Valuations, Error Interceptors
-    │   ├── models/             # Mongoose schemas (Audit Logs, Complaints, Evidence, Users)
-    │   ├── routes/             # Core routing tables grouping
-    │   ├── services/           # Business logic (Media privacy rules, Risk managers, Notification pipes)
-    │   └── utils/              # Standard Response engines, JWT wrappers, TOTP routines
-    ├── render.yaml
-    └── package.json
-💻 Getting Started & Setup
-Prerequisites
-Node.js (v18+ recommended)
+SatyaShield/
+├── client/   # React frontend, browser tests, accessibility and UI contracts
+├── server/   # Express API, MongoDB models, security services and runtime tests
+└── docs/
+    └── screenshots/
+```
 
-MongoDB Local Instance or Atlas Connection URI
+## Responsible development
 
-Installation
-Clone the Repository:
-
-Bash
-git clone [https://github.com/bharshit63880/SatyaShield---An-Dowry-Control-System.git](https://github.com/bharshit63880/SatyaShield---An-Dowry-Control-System.git)
-cd SatyaShield---An-Dowry-Control-System
-Backend Setup:
-
-Bash
-cd server
-npm install
-Create a .env file from the .env.example template and supply your specific Mongo strings, token keys, and salt depths.
-
-Start server in development mode:
-
-Bash
-npm run dev
-Frontend Setup:
-
-Bash
-cd ../client
-npm install
-Configure your backend target URL inside your custom .env parameters.
-
-Start your front-end rendering server:
-
-Bash
-npm run dev
-🛡️ Contribution & Security Standards
-Because this application directly services high-risk environments, code contributions must respect deep isolation practices. Ensure that all incoming routes contain appropriate sanitize.middleware execution and explicitly pass verification arrays inside the input schema pipelines before any database reads/writes occur.
-
-
----
-### Why this structure works perfectly for your repo:
-* **Reflects Exact Files:** It accurately matches your specific files like `complaint-risk.service.js`, `media-privacy.service.js`, and `audit.middleware.js` to show anyone viewing your repo that you are writing serious, secure, production-grade code[cite: 1].
-* **Clean & Modern Layout:** Uses modern markdown elements, emojis, and clear code trees to attract open-source contributors or recruiters checking out your GitHub profile.
-* **Reflects Exact Files:** It accurately matches your specific files like `complaint-risk.service.js`, `media-privacy.service.js`, and `audit.middleware.js` to show anyone viewing your repo that you are writing serious, secure, production-grade code[cite: 1].
-* **Clean & Modern Layout:** Uses modern markdown elements, emojis, and clear code tree
+Use dedicated test databases and fake adapters. Do not contact real emergency services or helplines during automated testing. Do not enable external AI or external SOS delivery without a separately reviewed and verified phase.

@@ -41,11 +41,18 @@ export const authenticate = asyncHandler(async (req, _res, next) => {
     });
   }
 
+  if (user.accountState !== 'active' || !user.isVerified) {
+    throw new ApiError(401, 'Account is unavailable.', { code: 'AUTH_ACCOUNT_UNAVAILABLE' });
+  }
+  if (decodedToken.role !== user.role || decodedToken.ver !== user.authVersion) {
+    throw new ApiError(401, 'Authentication token is invalid or expired.', { code: 'AUTH_TOKEN_INVALID' });
+  }
   if (user.accountLocked) {
     throw new ApiError(423, 'Account is locked.', { code: 'AUTH_ACCOUNT_LOCKED' });
   }
 
   req.user = user;
+  req.staffSessionId = decodedToken.sid;
   next();
 });
 

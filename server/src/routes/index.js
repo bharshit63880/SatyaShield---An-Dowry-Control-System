@@ -8,7 +8,7 @@ import ngoRoutes from './ngo.routes.js';
 import investigatorRoutes from './investigator.routes.js';
 import chatRoutes from './chat.routes.js';
 import platformRoutes from './platform.routes.js';
-import { authenticate, requireStaff } from '../middlewares/auth.middleware.js';
+import { authenticate } from '../middlewares/auth.middleware.js';
 
 const router = Router();
 
@@ -29,6 +29,6 @@ router.use('/chat', chatRoutes);
 router.use('/platform', platformRoutes);
 
 // Protected Staff Dashboard
-router.use('/dashboard', authenticate, requireStaff, dashboardRoutes);
+router.use('/dashboard', authenticate, dashboardRoutes);
 
 export default router;

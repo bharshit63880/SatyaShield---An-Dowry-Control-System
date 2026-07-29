@@ -10,7 +10,29 @@
   "scripts": {
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "build": "node -e \"console.log('No server build step required.')\""
+    "build": "node -e \"console.log('No server build step required.')\"",
+    "test": "node --test --test-concurrency=1",
+    "test:unit": "node --test --test-concurrency=1 \"test/unit/*.test.js\"",
+    "test:integration": "node --test --test-concurrency=1 \"test/integration/*.test.js\"",
+    "test:mongodb": "node --test --test-concurrency=1 --test-force-exit test/runtime/*.test.js",
+    "test:mongodb:phase2": "node --test --test-concurrency=1 --test-force-exit test/runtime/mongodb-authorization-flow.test.js",
+    "test:mongodb:phase3": "node --test --test-concurrency=1 --test-force-exit test/runtime/mongodb-evidence-vault-flow.test.js",
+    "test:mongodb:phase5": "node --test --test-concurrency=1 --test-force-exit test/runtime/mongodb-staff-auth-flow.test.js",
+    "test:mongodb:phase6": "node --test --test-concurrency=1 --test-force-exit test/runtime/mongodb-phase6-ngo-flow.test.js",
+    "evidence:legacy-inventory": "node scripts/inventory-legacy-evidence.js",
+    "evidence:legacy-migrate": "node scripts/inventory-legacy-evidence.js --apply",
+    "retention:report": "node scripts/retention-report.js",
+    "auth:bootstrap-admin": "node scripts/bootstrap-admin.js",
+    "auth:legacy-inventory": "node scripts/inventory-legacy-auth.js",
+    "ngo:legacy-inventory": "node scripts/ngo-legacy-inventory.js",
+    "ngo:capacity-report": "node scripts/ngo-capacity-report.js",
+    "triage:legacy-report": "node scripts/triage-legacy-report.js",
+    "test:mongodb:phase7": "node --test --test-concurrency=1 --test-force-exit test/runtime/mongodb-phase7-triage-flow.test.js",
+    "workflow:scheduler": "node scripts/run-escalation-scheduler.js",
+    "workflow:scheduler:execute": "node scripts/run-escalation-scheduler.js --execute",
+    "test:mongodb:phase8": "node --test --test-concurrency=1 --test-force-exit test/runtime/mongodb-phase8-escalation-flow.test.js"
+    ,"test:mongodb:phase9": "node --test --test-concurrency=1 --test-force-exit test/runtime/mongodb-phase9-socket-chat-flow.test.js"
+    ,"test:mongodb:phase10": "node --test --test-concurrency=1 --test-force-exit test/runtime/mongodb-phase10-sos-helpline-flow.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -19,14 +41,16 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
+    "ffmpeg-static": "5.2.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.8.3",
     "morgan": "^1.10.0",
     "multer": "^2.0.2",
     "openai": "^4.104.0",
-    "ffmpeg-static": "5.2.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.34.5",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.7"

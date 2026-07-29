@@ -1,8 +1,15 @@
 import mongoose from 'mongoose';
 
 const deviceSchema = new mongoose.Schema({
-  ip: String,
-  userAgent: String,
+  category: {
+    type: String,
+    enum: ['desktop', 'mobile', 'tablet', 'unknown'],
+    default: 'unknown'
+  },
+  // Legacy fields remain unreadable so older records can be migrated without
+  // accidentally returning their high-cardinality telemetry.
+  ip: { type: String, select: false },
+  userAgent: { type: String, select: false },
   lastLoginAt: {
     type: Date,
     default: Date.now
@@ -36,34 +43,22 @@ const userSchema = new mongoose.Schema(
       type: Boolean,
       default: false
     },
-    emailVerificationToken: {
+    accountState: {
       type: String,
-      default: null
+      enum: ['active', 'suspended', 'disabled', 'tombstoned'],
+      default: 'active',
+      index: true
     },
-    emailVerificationExpires: {
-      type: Date,
-      default: null
-    },
-    passwordResetToken: {
-      type: String,
-      default: null
-    },
-    passwordResetExpires: {
-      type: Date,
-      default: null
-    },
-    mfaSecret: {
-      type: String,
-      default: null
-    },
+    authVersion: { type: Number, default: 1 },
+    passwordChangedAt: { type: Date, default: Date.now },
     mfaEnabled: {
       type: Boolean,
       default: false
     },
-    mfaTempSecret: {
-      type: String,
-      default: null
-    },
+    mfaSecretEncrypted: { type: String, default: null, select: false },
+    mfaPendingSecretEncrypted: { type: String, default: null, select: false },
+    mfaLastAcceptedStep: { type: Number, default: null, select: false },
+    mfaEnrolledAt: { type: Date, default: null },
     accountLocked: {
       type: Boolean,
       default: false
@@ -86,10 +81,5 @@ const userSchema = new mongoose.Schema(
     timestamps: true
   }
 );
-
-// Indexes for performance
-
-userSchema.index({ passwordResetToken: 1 });
-userSchema.index({ emailVerificationToken: 1 });
 
 export const User = mongoose.model('User', userSchema);

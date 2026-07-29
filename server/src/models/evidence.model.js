@@ -1,64 +1,78 @@
 import mongoose from 'mongoose';
 
+export const EVIDENCE_LIFECYCLE_STATUSES = [
+  'uploading',
+  'pending_scan',
+  'available',
+  'quarantined',
+  'rejected',
+  'deleted',
+  'missing',
+  'legacy_unmigrated'
+];
+
 const evidenceSchema = new mongoose.Schema(
   {
-    complaintId: {
-      type: String,
-      required: true,
-      index: true
-    },
+    evidenceId: { type: String, unique: true, sparse: true, index: true },
+    complaintId: { type: String, required: true, index: true },
     category: {
       type: String,
       enum: ['image', 'video', 'document', 'audio', 'chat_transcript'],
       required: true
     },
-    fileUrl: {
+    originalName: { type: String, required: true, trim: true },
+    detectedMimeType: { type: String, default: null },
+    detectedExtension: { type: String, default: null },
+    mimeType: { type: String, default: null },
+    fileSize: { type: Number, required: true },
+    plaintextDigest: { type: String, default: null, select: false },
+    encryptedStorageDigest: { type: String, default: null, select: false },
+    fileHash: { type: String, default: null, select: false },
+    storageProvider: { type: String, default: null },
+    storageId: { type: String, default: null, select: false },
+    encryptionVersion: { type: Number, default: null },
+    scanStatus: {
       type: String,
-      required: true
+      enum: ['pending', 'not_configured', 'clean', 'infected', 'failed'],
+      default: 'pending'
     },
-    originalName: {
+    scanEngine: { type: String, default: null },
+    scanEngineVersion: { type: String, default: null },
+    lifecycleStatus: {
       type: String,
-      required: true,
-      trim: true
-    },
-    mimeType: {
-      type: String,
-      required: true
-    },
-    fileSize: {
-      type: Number,
-      required: true
-    },
-    fileHash: {
-      type: String,
-      required: true,
+      enum: EVIDENCE_LIFECYCLE_STATUSES,
+      default: 'legacy_unmigrated',
       index: true
     },
+    reporterVisible: { type: Boolean, default: true },
     uploadedBy: {
       type: String,
       enum: ['victim', 'ngo', 'investigator', 'admin'],
       required: true
     },
-    uploaderId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: 'User',
-      default: null
+    uploaderId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    availableAt: { type: Date, default: null },
+    quarantinedAt: { type: Date, default: null },
+    deletedAt: { type: Date, default: null },
+    retentionDeadline: { type: Date, default: null },
+    retentionCategory: { type: String, default: 'evidence' },
+    retentionPolicyVersion: { type: String, default: null },
+    retentionEligibleAt: { type: Date, default: null, index: true },
+    deletionRequestedAt: { type: Date, default: null },
+    legalHold: { type: Boolean, default: false },
+    tombstoneState: {
+      type: String,
+      enum: ['active', 'deletion_pending', 'deleted'],
+      default: 'active'
     },
-    isDuplicate: {
-      type: Boolean,
-      default: false
-    },
-    metadata: {
-      type: mongoose.Schema.Types.Mixed,
-      default: {}
-    }
+    // Legacy-only fields retained for inventory. Never serialize or serve them.
+    fileUrl: { type: String, default: null, select: false },
+    metadata: { type: mongoose.Schema.Types.Mixed, default: {}, select: false }
   },
-  {
-    timestamps: true
-  }
+  { timestamps: true }
 );
 
-// Compound index to help search evidence per case
+evidenceSchema.index({ complaintId: 1, plaintextDigest: 1 });
 evidenceSchema.index({ complaintId: 1, createdAt: -1 });
 
 export const Evidence = mongoose.model('Evidence', evidenceSchema);

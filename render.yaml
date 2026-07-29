@@ -26,6 +26,14 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      - key: REPORTER_ACCESS_HMAC_KEY
+        sync: false
+      - key: REPORTER_TOKEN_SECRET
+        sync: false
+      - key: REPORTER_TOKEN_AUDIENCE
+        value: satyashield-reporter-case
+      - key: REPORTER_TOKEN_EXPIRES_IN
+        value: 15m
       - key: JWT_ISSUER
         value: dahej-control-system
       - key: JWT_AUDIENCE

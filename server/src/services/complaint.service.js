@@ -1,12 +1,23 @@
 import crypto from 'crypto';
+import { env } from '../config/env.js';
 
 import { COMPLAINT_RISK_LEVELS, COMPLAINT_STATUSES, Complaint } from '../models/complaint.model.js';
 import { CaseHistory } from '../models/case-history.model.js';
 import { analyzeComplaintRisk } from './complaint-risk.service.js';
-import { assignNgoForComplaint } from './ngo-router.service.js';
+import { createInitialTriageAssessment, getCurrentAssessment, reporterTriageView } from './triage.service.js';
 import { ApiError } from '../utils/ApiError.js';
 import { decryptSensitiveValue, encryptSensitiveValue } from '../utils/crypto.js';
 import { buildPaginationMeta } from '../utils/query.js';
+import {
+  generateReporterAccessSecret,
+  hashReporterAccessSecret,
+  signReporterCaseToken,
+  verifyReporterAccessSecret
+} from '../utils/reporter-access.js';
+import {
+  assertAdministrativeWorkflow,
+  buildComplaintListScope
+} from './authorization.service.js';
 
 function generateAnonymousId() {
   return `anon-${crypto.randomUUID()}`;
@@ -31,36 +42,152 @@ function parseApproximateLocation(encryptedValue) {
 }
 
 export function serializeComplaintForAdmin(complaint) {
+  const { description, approximateLocation } = getDecryptedComplaintFields(complaint);
+
+  return {
+    anonymousId: complaint.anonymousId,
+    mediaType: complaint.mediaType,
+    description,
+    triage: complaint.currentTriageSeverity ? {
+      severity: complaint.currentTriageSeverity,
+      reviewState: complaint.currentTriageReviewState,
+      assessmentId: complaint.currentTriageAssessmentId,
+      version: complaint.currentTriageVersion
+    } : { severity: 'moderate', reviewState: 'review_required', legacyUnreviewed: true },
+    assignedNgo: complaint.assignedNgo?.name
+      ? {
+          name: complaint.assignedNgo.name,
+          city: complaint.assignedNgo.city ?? null,
+          district: complaint.assignedNgo.district ?? null,
+          coverageLabel: complaint.assignedNgo.coverageLabel ?? null,
+          contactPhone: complaint.assignedNgo.contactPhone ?? null,
+          contactEmail: complaint.assignedNgo.contactEmail ?? null,
+          assignmentSource: complaint.assignedNgo.assignmentSource ?? null,
+          matchedOn: complaint.assignedNgo.matchedOn ?? null,
+          assignedAt: complaint.assignedNgo.assignedAt ?? null
+        }
+      : null,
+    assignedInvestigator: complaint.assignedInvestigator?.name
+      ? {
+          name: complaint.assignedInvestigator.name,
+          badgeNumber: complaint.assignedInvestigator.badgeNumber ?? null,
+          assignedAt: complaint.assignedInvestigator.assignedAt ?? null
+        }
+      : null,
+    timestamp: complaint.timestamp || complaint.createdAt,
+    status: complaint.status,
+    supportRoutingStatus: complaint.routingStatus ?? 'pending_admin_review',
+    locationConsent: complaint.locationConsent,
+    approximateLocation
+  };
+}
+
+function getDecryptedComplaintFields(complaint) {
   const description =
     (complaint.descriptionEncrypted
       ? decryptSensitiveValue(complaint.descriptionEncrypted)
       : complaint.description) ?? '';
-  const location = complaint.locationConsent
+  const approximateLocation = complaint.locationConsent
     ? buildApproximateLocationLabel(parseApproximateLocation(complaint.approximateLocationEncrypted))
     : null;
 
+  return { description, approximateLocation };
+}
+
+export function serializeComplaintForReporter(complaint) {
+  const { description, approximateLocation } = getDecryptedComplaintFields(complaint);
+  const assignedNgo = complaint.assignedNgo?.name
+    ? {
+        name: complaint.assignedNgo.name,
+        coverageLabel: complaint.assignedNgo.coverageLabel ?? null
+      }
+    : null;
+
+  return {
+    caseId: complaint.anonymousId,
+    description,
+    status: complaint.status,
+    supportRoutingStatus: complaint.routingStatus ?? 'pending_admin_review',
+    triage: complaint.currentTriageSeverity ? {
+      severity: complaint.currentTriageSeverity,
+      reviewState: complaint.currentTriageReviewState
+    } : { severity: 'moderate', reviewState: 'review_required' },
+    mediaType: complaint.mediaType ?? 'none',
+    locationConsent: Boolean(complaint.locationConsent),
+    approximateLocation,
+    assignedNgo,
+    submittedAt: complaint.timestamp || complaint.createdAt
+  };
+}
+
+export function serializeComplaintForNGO(complaint) {
+  const { description, approximateLocation } = getDecryptedComplaintFields(complaint);
   return {
     anonymousId: complaint.anonymousId,
-    mediaUrl: complaint.mediaUrl,
-    mediaType: complaint.mediaType,
     description,
-    detectedKeywords: complaint.detectedKeywords ?? [],
-    riskScore: complaint.riskScore ?? 0,
-    riskLevel: complaint.riskLevel ?? 'low',
-    indicators: complaint.indicators ?? {
-      dowryHarassment: false,
-      suicideRisk: false,
-      domesticViolence: false
-    },
-    escalationRecommendation: complaint.escalationRecommendation || 'Review case timeline.',
-    threatSummary: complaint.threatSummary || 'AI analysis completed.',
-    assignedNgo: complaint.assignedNgo ?? null,
-    assignedInvestigator: complaint.assignedInvestigator ?? null,
-    timestamp: complaint.timestamp || complaint.createdAt,
     status: complaint.status,
-    locationConsent: complaint.locationConsent,
-    approximateLocation: location
+    triage: complaint.currentTriageSeverity ? {
+      severity: complaint.currentTriageSeverity,
+      reviewState: complaint.currentTriageReviewState
+    } : { severity: 'moderate', reviewState: 'review_required' },
+    mediaType: complaint.mediaType ?? 'none',
+    locationConsent: Boolean(complaint.locationConsent),
+    approximateLocation,
+    assignedNgo: complaint.assignedNgo?.name
+      ? {
+          name: complaint.assignedNgo.name,
+          coverageLabel: complaint.assignedNgo.coverageLabel ?? null,
+          assignedAt: complaint.assignedNgo.assignedAt ?? null,
+          acknowledgedAt: complaint.assignedNgo.acknowledgedAt ?? null
+        }
+      : null,
+    timestamp: complaint.timestamp || complaint.createdAt
   };
+}
+
+export function serializeComplaintForInvestigator(complaint) {
+  const { description, approximateLocation } = getDecryptedComplaintFields(complaint);
+  return {
+    anonymousId: complaint.anonymousId,
+    description,
+    status: complaint.status,
+    triage: complaint.currentTriageSeverity ? {
+      severity: complaint.currentTriageSeverity,
+      reviewState: complaint.currentTriageReviewState
+    } : { severity: 'moderate', reviewState: 'review_required' },
+    mediaType: complaint.mediaType ?? 'none',
+    locationConsent: Boolean(complaint.locationConsent),
+    approximateLocation,
+    assignedNgo: complaint.assignedNgo?.name
+      ? {
+          name: complaint.assignedNgo.name,
+          coverageLabel: complaint.assignedNgo.coverageLabel ?? null
+        }
+      : null,
+    assignedInvestigator: complaint.assignedInvestigator?.name
+      ? {
+          name: complaint.assignedInvestigator.name,
+          badgeNumber: complaint.assignedInvestigator.badgeNumber ?? null,
+          assignedAt: complaint.assignedInvestigator.assignedAt ?? null
+        }
+      : null,
+    timestamp: complaint.timestamp || complaint.createdAt
+  };
+}
+
+export function serializeComplaintForRole(complaint, role) {
+  if (role === 'ngo') {
+    return serializeComplaintForNGO(complaint);
+  }
+  if (role === 'investigator') {
+    return serializeComplaintForInvestigator(complaint);
+  }
+  if (['admin', 'superadmin'].includes(role)) {
+    return serializeComplaintForAdmin(complaint);
+  }
+  throw new ApiError(403, 'Complaint serialization is not allowed for this role.', {
+    code: 'RESOURCE_ACCESS_DENIED'
+  });
 }
 
 export async function createComplaint({
@@ -69,13 +196,22 @@ export async function createComplaint({
   mediaType,
   locationConsent,
   approximateLocation,
-  submissionFingerprintHash
+  privacyAcknowledged,
+  privacyNoticeVersion,
+  consentVersion,
+  aiConsent,
+  aiDisclosureVersion,
+  complaintCategory,
+  preferredLanguage,
+  triageInput
 }) {
-  const riskAnalysis = await analyzeComplaintRisk(description);
-  const assignedNgo = await assignNgoForComplaint({ approximateLocation });
+  const accessSecret = generateReporterAccessSecret();
 
   const complaint = await Complaint.create({
     anonymousId: generateAnonymousId(),
+    reporterAccessSecretHash: hashReporterAccessSecret(accessSecret),
+    reporterAccessVersion: 1,
+    reporterAccessEnabled: true,
     descriptionEncrypted: description ? encryptSensitiveValue(description.trim()) : null,
     mediaUrl: mediaUrl ?? null,
     mediaType: mediaType ?? 'none',
@@ -83,17 +219,31 @@ export async function createComplaint({
     approximateLocationEncrypted: approximateLocation
       ? encryptSensitiveValue(JSON.stringify(approximateLocation))
       : null,
-    submissionFingerprintHash: submissionFingerprintHash ?? null,
-    detectedKeywords: riskAnalysis.detectedKeywords,
-    riskScore: riskAnalysis.riskScore,
-    riskLevel: riskAnalysis.riskLevel,
-    indicators: riskAnalysis.indicators,
-    escalationRecommendation: riskAnalysis.escalationRecommendation,
-    threatSummary: riskAnalysis.threatSummary,
-    assignedNgo,
+    privacyAcknowledged,
+    privacyNoticeVersion,
+    consentVersion,
+    aiConsent: Boolean(aiConsent),
+    aiProcessing: {
+      used: false, provider: 'disabled', model: null,
+      disclosureVersion: aiConsent ? aiDisclosureVersion : null,
+      consentVersion: aiConsent ? consentVersion : null,
+      consentedAt: null, resultValidationState: 'local'
+    },
+    complaintCategory,
+    preferredLanguage,
+    assignedNgo: {},
+    routingStatus: 'pending_admin_review',
     status: 'submitted',
+    retentionPolicyVersion: env.retentionPolicyVersion,
+    retentionEligibleAt: new Date(Date.now() + env.complaintRetentionDays * 86400000),
     timestamp: new Date()
   });
+  try {
+    await createInitialTriageAssessment(complaint, triageInput);
+  } catch (error) {
+    await Complaint.deleteOne({ _id: complaint._id });
+    throw error;
+  }
 
   // Track initial history log
   await CaseHistory.create({
@@ -103,7 +253,7 @@ export async function createComplaint({
     newStatus: 'submitted'
   });
 
-  return complaint;
+  return { complaint, accessSecret };
 }
 
 export async function getRecentComplaints(limit = 8) {
@@ -118,6 +268,7 @@ export async function getRecentComplaints(limit = 8) {
 
 // Advanced search and filters implementation
 export async function listComplaints({
+  user,
   status,
   riskLevel,
   assignedNgoId,
@@ -128,18 +279,19 @@ export async function listComplaints({
   skip = 0,
   sort = { timestamp: -1 }
 }) {
-  const query = {};
+  const { actor, query: scopeQuery } = await buildComplaintListScope(user);
+  const query = { ...scopeQuery };
 
   if (status && status !== 'all') {
     query.status = status;
   }
   if (riskLevel && riskLevel !== 'all') {
-    query.riskLevel = riskLevel;
+    query.currentTriageSeverity = riskLevel;
   }
-  if (assignedNgoId) {
+  if (assignedNgoId && ['admin', 'superadmin'].includes(actor.role)) {
     query['assignedNgo.ngoId'] = assignedNgoId;
   }
-  if (assignedInvestigatorId) {
+  if (assignedInvestigatorId && ['admin', 'superadmin'].includes(actor.role)) {
     query['assignedInvestigator.investigatorId'] = assignedInvestigatorId;
   }
 
@@ -147,7 +299,6 @@ export async function listComplaints({
     const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     query.$or = [
       { anonymousId: { $regex: escapedSearch, $options: 'i' } },
-      { detectedKeywords: { $regex: escapedSearch, $options: 'i' } },
       { 'assignedNgo.name': { $regex: escapedSearch, $options: 'i' } },
       { 'assignedInvestigator.name': { $regex: escapedSearch, $options: 'i' } }
     ];
@@ -161,7 +312,9 @@ export async function listComplaints({
     .limit(limit)
     .lean();
 
-  const serialized = complaints.map(serializeComplaintForAdmin);
+  const serialized = complaints.map((complaint) =>
+    serializeComplaintForRole(complaint, actor.role)
+  );
 
   return {
     complaints: serialized,
@@ -192,13 +345,13 @@ export async function getComplaintRiskSummary() {
   const counts = await Complaint.aggregate([
     {
       $group: {
-        _id: '$riskLevel',
+        _id: '$currentTriageSeverity',
         count: { $sum: 1 }
       }
     }
   ]);
 
-  const summary = Object.fromEntries(COMPLAINT_RISK_LEVELS.map((level) => [level, 0]));
+  const summary = Object.fromEntries(['low', 'moderate', 'high', 'critical'].map((level) => [level, 0]));
 
   for (const item of counts) {
     summary[item._id] = item.count;
@@ -256,7 +409,7 @@ export async function getComplaintTrend(days = 7) {
 
 export async function getComplaintHeatmapData(limit = 12) {
   const complaints = await Complaint.find({ locationConsent: true })
-    .select('+approximateLocationEncrypted riskLevel')
+    .select('+approximateLocationEncrypted currentTriageSeverity')
     .lean();
 
   const buckets = new Map();
@@ -278,7 +431,7 @@ export async function getComplaintHeatmapData(limit = 12) {
     };
 
     existingBucket.count += 1;
-    if (complaint.riskLevel === 'high') {
+    if (['high', 'critical'].includes(complaint.currentTriageSeverity)) {
       existingBucket.highRiskCount += 1;
     }
 
@@ -297,6 +450,7 @@ export async function getComplaintHeatmapData(limit = 12) {
 }
 
 export async function updateComplaintStatusByAnonymousId(anonymousId, status, user = null) {
+  assertAdministrativeWorkflow(user);
   if (!COMPLAINT_STATUSES.includes(status)) {
     throw new ApiError(400, 'Invalid complaint status.');
   }
@@ -331,6 +485,7 @@ export async function updateComplaintStatusByAnonymousId(anonymousId, status, us
 
 // Assign Investigator
 export async function assignInvestigatorToComplaint(anonymousId, investigator, user = null) {
+  assertAdministrativeWorkflow(user);
   const complaint = await Complaint.findOneAndUpdate(
     { anonymousId },
     {
@@ -362,19 +517,31 @@ export async function assignInvestigatorToComplaint(anonymousId, investigator, u
   return serializeComplaintForAdmin(complaint);
 }
 
-export async function hasRecentComplaintFingerprint(submissionFingerprintHash, windowMs = 10 * 60 * 1000) {
-  if (!submissionFingerprintHash) {
-    return false;
-  }
+const INVALID_REPORTER_SECRET_HASH = '0'.repeat(64);
 
-  const existingComplaint = await Complaint.findOne({
-    submissionFingerprintHash,
-    createdAt: {
-      $gte: new Date(Date.now() - windowMs)
-    }
-  })
-    .select('_id')
+export async function exchangeReporterAccessCredentials(
+  { caseId, accessSecret },
+  complaintModel = Complaint
+) {
+  const complaint = await complaintModel.findOne({ anonymousId: caseId })
+    .select('anonymousId +reporterAccessSecretHash reporterAccessEnabled reporterAccessVersion')
     .lean();
 
-  return Boolean(existingComplaint);
+  const storedHash = complaint?.reporterAccessSecretHash ?? INVALID_REPORTER_SECRET_HASH;
+  const secretMatches = verifyReporterAccessSecret(accessSecret, storedHash);
+  const accessEnabled =
+    complaint?.reporterAccessEnabled === true &&
+    complaint?.reporterAccessVersion === 1 &&
+    Boolean(complaint?.reporterAccessSecretHash);
+
+  if (!secretMatches || !accessEnabled) {
+    throw new ApiError(401, 'Case access credentials are invalid.', {
+      code: 'REPORTER_ACCESS_INVALID'
+    });
+  }
+
+  return {
+    accessToken: signReporterCaseToken(complaint.anonymousId),
+    tokenType: 'Bearer'
+  };
 }

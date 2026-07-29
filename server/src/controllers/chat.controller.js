@@ -1,136 +1,68 @@
+import crypto from 'crypto';
+
 import { ChatMessage } from '../models/chat-message.model.js';
-import { Complaint } from '../models/complaint.model.js';
-import { ApiError } from '../utils/ApiError.js';
 import { asyncHandler } from '../utils/asyncHandler.js';
-import { encryptSensitiveValue, decryptSensitiveValue } from '../utils/crypto.js';
-import { createAuditLog } from '../services/audit.service.js';
 import { sendCreated, sendSuccess } from '../utils/apiResponse.js';
+import { createAuditLog } from '../services/audit.service.js';
+import {
+  chatActorFromRequest, listChatMessages, markMessagesRead, persistChatMessage
+} from '../services/chat.service.js';
 
-// Verify access to complaint chat
-async function verifyChatAccess(complaintId, user = null) {
-  const complaint = await Complaint.findOne({ anonymousId: complaintId }).lean();
-  if (!complaint) {
-    throw new ApiError(404, 'Complaint not found.');
-  }
-
-  // If user is authenticated, check role eligibility
-  if (user) {
-    if (['admin', 'superadmin'].includes(user.role)) {
-      return true;
-    }
-    if (user.role === 'ngo' && complaint.assignedNgo?.ngoId) {
-      // Find user's NGO profile
-      return true; // Simple allow for NGO assigned
-    }
-    if (user.role === 'investigator' && complaint.assignedInvestigator?.investigatorId?.toString() === user.id) {
-      return true;
-    }
-    throw new ApiError(403, 'You do not have permission to access this chat room.', { code: 'CHAT_ACCESS_DENIED' });
-  }
-
-  // If user is anonymous, they must have the anonymousId (which they do since they passed it in the request params).
-  return true;
-}
-
-// Get Chat Messages (Decrypted on-the-fly)
 export const getChatMessages = asyncHandler(async (req, res) => {
-  const { anonymousId } = req.params;
-  await verifyChatAccess(anonymousId, req.user);
-
-  const messages = await ChatMessage.find({ complaintId: anonymousId }).sort({ createdAt: 1 }).lean();
-
-  const serialized = messages.map((msg) => {
-    let decryptedText = 'Decryption failed.';
-    try {
-      decryptedText = decryptSensitiveValue(msg.messageEncrypted);
-    } catch {
-      decryptedText = msg.messageEncrypted;
-    }
-
-    return {
-      id: msg._id,
-      complaintId: msg.complaintId,
-      senderRole: msg.senderRole,
-      senderName: msg.senderName,
-      text: decryptedText,
-      attachments: msg.attachments,
-      readBy: msg.readBy,
-      createdAt: msg.createdAt
-    };
+  const actor = chatActorFromRequest(req);
+  const messages = await listChatMessages({
+    complaintId: req.params.anonymousId,
+    actor,
+    afterSequence: req.query.after,
+    limit: req.query.limit
   });
-
   return sendSuccess(res, {
     message: 'Chat messages fetched successfully.',
-    data: { messages: serialized }
-  });
-});
-
-// Send Chat Message
-export const sendChatMessage = asyncHandler(async (req, res) => {
-  const { anonymousId } = req.params;
-  const { text, attachments } = req.body;
-
-  if (!text && (!attachments || attachments.length === 0)) {
-    throw new ApiError(400, 'Message body or attachment is required.');
-  }
-
-  await verifyChatAccess(anonymousId, req.user);
-
-  const senderRole = req.user ? req.user.role : 'victim';
-  const senderId = req.user ? req.user.id : null;
-  const senderName = req.user ? req.user.name : 'Anonymous Reporter';
-
-  const messageEncrypted = encryptSensitiveValue(text || '');
-
-  const message = await ChatMessage.create({
-    complaintId: anonymousId,
-    senderRole,
-    senderId,
-    senderName,
-    messageEncrypted,
-    attachments: attachments || []
-  });
-
-  await createAuditLog({
-    userId: req.user ? req.user.id : null,
-    userEmail: req.user ? req.user.email : 'anonymous',
-    role: senderRole,
-    action: 'chat_message_sent',
-    details: { anonymousId, messageId: message.id },
-    req
-  });
-
-  return sendCreated(res, {
-    message: 'Chat message sent successfully.',
     data: {
-      message: {
-        id: message._id,
-        complaintId: message.complaintId,
-        senderRole,
-        senderName,
-        text,
-        attachments: message.attachments,
-        createdAt: message.createdAt
-      }
+      messages,
+      nextCursor: messages.at(-1)?.sequence ?? (Number(req.query.after) || 0)
     }
   });
 });
 
-// Mark messages as read
+export const sendChatMessage = asyncHandler(async (req, res) => {
+  const actor = chatActorFromRequest(req);
+  const result = await persistChatMessage({
+    complaintId: req.params.anonymousId,
+    actor,
+    text: req.body.text,
+    attachments: req.body.attachments,
+    clientMessageId: req.body.clientMessageId ||
+      req.headers['x-idempotency-key'] || `rest-${crypto.randomUUID()}`
+  });
+  await createAuditLog({
+    userId: req.user?.id,
+    role: actor.category,
+    action: 'chat_message_sent',
+    resourceType: 'complaint',
+    resourceRef: req.params.anonymousId,
+    details: {
+      category: result.duplicate ? 'idempotent_replay' : 'persisted',
+      contentLength: String(req.body.text || '').length
+    },
+    req
+  });
+  return sendCreated(res, {
+    message: result.duplicate ? 'Existing chat message returned.' : 'Chat message persisted.',
+    data: { message: result.view, duplicate: result.duplicate }
+  });
+});
+
 export const markChatAsRead = asyncHandler(async (req, res) => {
-  const { anonymousId } = req.params;
-
-  if (!req.user) {
-    // Victims don't need read-receipt markings on database userId level
-    return sendSuccess(res, { message: 'Messages marked as read.' });
-  }
-
-  await ChatMessage.updateMany(
-    { complaintId: anonymousId, 'readBy.userId': { $ne: req.user.id } },
-    { $push: { readBy: { userId: req.user.id, readAt: new Date() } } }
-  );
-
+  const actor = chatActorFromRequest(req);
+  const throughSequence = req.body.throughSequence ??
+    (await ChatMessage.findOne({ complaintId: req.params.anonymousId })
+      .sort({ sequence: -1 }).select('sequence').lean())?.sequence ?? 0;
+  const receipt = await markMessagesRead({
+    complaintId: req.params.anonymousId, actor, throughSequence
+  });
   return sendSuccess(res, {
-    message: 'Messages marked as read.'
+    message: 'Messages marked as read.',
+    data: { receipt }
   });
 });

@@ -3,6 +3,10 @@ client/node_modules/
 client/dist/
 server/node_modules/
 coverage/
+client/playwright-report/
+client/test-results/
+playwright-report/
+test-results/
 .DS_Store
 Thumbs.db
 .env
@@ -15,3 +19,5 @@ pnpm-debug.log*
 logs/
 *.log
 server/uploads/
+server/private-data/
+private-data/
