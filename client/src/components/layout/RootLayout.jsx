@@ -42,7 +42,12 @@ export function RootLayout() {
       <header className="app-header">
         <div className="page-shell app-header-inner">
           <Link to="/" className="app-brand" aria-label={t('app.name')}>
-            <span aria-hidden="true" className="app-brand-mark">S</span>
+            <img
+              aria-hidden="true"
+              className="app-brand-mark"
+              src="/favicon.png"
+              alt=""
+            />
             <span><strong>{t('app.name')}</strong><small>{t('app.tagline')}</small></span>
           </Link>
           <nav className="desktop-navigation" aria-label="Primary">

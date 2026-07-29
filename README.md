@@ -1,5 +1,9 @@
 # SatyaShield
 
+<p align="center">
+  <img src="client/public/satyashield-logo.png" alt="SatyaShield logo" width="720" />
+</p>
+
 SatyaShield is a privacy-focused MERN application for reporting dowry harassment, tracking cases with complaint-scoped credentials, and coordinating authorized NGO, investigator, and administrative workflows.
 
 > SatyaShield is not an emergency-dispatch service. It does not guarantee police, ambulance, NGO, message-delivery, or response outcomes.

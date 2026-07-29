@@ -101,7 +101,7 @@ select {
 .app-brand { display: flex; align-items: center; gap: .65rem; min-width: max-content; }
 .app-brand span:last-child { display: grid; }
 .app-brand small { color: #aab5c6; font-size: .7rem; }
-.app-brand-mark { width: 2.5rem; height: 2.5rem; border: 1px solid #00e5cc; border-radius: .75rem; display: grid; place-items: center; color: #00e5cc; font-weight: 900; }
+.app-brand-mark { width: 2.5rem; height: 2.5rem; border-radius: .75rem; display: block; object-fit: cover; }
 .desktop-navigation, .header-actions, .footer-inner { display: flex; align-items: center; gap: .75rem; }
 .nav-item { padding: .7rem .9rem; border-radius: .75rem; color: #c9d2df; min-height: 44px; display: inline-flex; align-items: center; }
 .nav-active { color: #00e5cc; background: rgba(0,229,204,.12); text-decoration: underline; text-underline-offset: .25rem; }
