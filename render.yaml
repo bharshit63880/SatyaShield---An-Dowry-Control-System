@@ -3,14 +3,10 @@ services:
     name: dahej-control-system-api
     runtime: node
     rootDir: server
-    plan: starter
+    plan: free
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/v1/health
-    disk:
-      name: private-evidence
-      mountPath: /opt/render/project/private-data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
