@@ -1,11 +1,7 @@
-# SatyaShield
+# SatyaShield — Secure Anti-Dowry Reporting & Case Coordination Platform
 
 <p align="center">
-  <img src="client/public/satyashield-logo.png" alt="SatyaShield logo" width="620" />
-</p>
-
-<p align="center">
-  A privacy-focused MERN platform for identity-minimized complaint reporting, protected case tracking, and controlled collaboration between authorized organizations and personnel.
+  A privacy-focused MERN platform for identity-minimized dowry-harassment reporting, protected case tracking, and controlled collaboration between authorized NGOs, investigators, and administrators.
 </p>
 
 <p align="center">
