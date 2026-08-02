@@ -1,59 +1,107 @@
 # SatyaShield
 
 <p align="center">
-  <img src="client/public/satyashield-logo.png" alt="SatyaShield logo" width="720" />
+  <img src="client/public/satyashield-logo.png" alt="SatyaShield logo" width="620" />
 </p>
 
-SatyaShield is a privacy-focused MERN application for reporting dowry-harassment concerns, privately tracking a case, and coordinating authorized NGO, investigator, and administrative work.
+<p align="center">
+  A privacy-focused MERN platform for identity-minimized complaint reporting, protected case tracking, and controlled collaboration between authorized organizations and personnel.
+</p>
 
-> SatyaShield is not an emergency-dispatch service. It does not guarantee police, ambulance, NGO, message-delivery, or response outcomes.
+<p align="center">
+  <a href="https://satya-shield-client.vercel.app"><strong>Open Live Demo</strong></a>
+  &nbsp;•&nbsp;
+  <a href="https://satyashield-api.onrender.com/api/v1/health">API Health</a>
+  &nbsp;•&nbsp;
+  <a href="docs/architecture-and-security.md">Architecture &amp; Security</a>
+</p>
 
-## Highlights
+> [!IMPORTANT]
+> **PUBLIC DEMO AND INTERNAL EVALUATION ONLY — NOT A LIVE CASEWORK OR EMERGENCY SERVICE**
+>
+> SatyaShield is engineered as a substantial full-stack system whose architecture can support real complaint workflows, verified NGO participation, evidence handling, staff review, realtime communication, escalation, and internal SOS coordination when it is operated with approved organizations, qualified personnel, production infrastructure, monitoring, legal review, and audited security controls.
+>
+> **The current public deployment is intentionally restricted to demonstration and internal evaluation. It must not be used for actual complaints, real NGO casework, emergency assistance, or time-sensitive safety situations.** External emergency delivery is disabled, no response is guaranteed, and the platform does not contact police, ambulances, emergency responders, or public helplines. These restrictions are deliberate safeguards—not missing marketing claims.
 
-- Anonymous complaint intake with structured safety questions and explicit privacy acknowledgment.
-- One-time reporter access secret; only its keyed hash is retained.
-- Complaint-scoped tracking, evidence, chat, and internal SOS access.
-- Encrypted private evidence vault with lifecycle and integrity controls.
-- Staff authentication with rotating sessions, CSRF protection, TOTP MFA, and recovery codes.
-- Exact-resource authorization for NGOs, investigators, administrators, and superadministrators.
-- Deterministic NGO matching, capacity checks, assignment acknowledgment, and immediate revocation.
-- Deterministic triage, immutable assessment history, and restricted human overrides.
-- Internal deadlines, idempotent escalation scheduling, and complaint-scoped Socket.IO chat.
-- English and Hindi interface catalogs with automated parity and visible-string checks.
-- Provider-neutral notification queue and review-gated legal-information architecture.
+## Overview
 
-External AI and external SOS delivery are disabled.
+SatyaShield demonstrates how a sensitive social-impact workflow can be built around data minimization, exact-resource authorization, encrypted evidence, deterministic decision rules, and human oversight. Reporters receive one-time case credentials instead of creating an identity-linked account, while each staff role receives only the access required for its assigned responsibilities.
 
-## Architecture
+The application includes a React interface, an Express API, MongoDB-backed workflows, complaint-scoped Socket.IO communication, private evidence controls, role-based workspaces, and bilingual English/Hindi interface catalogs.
 
-The React client calls a versioned Express API. MongoDB stores case and workflow records; private evidence is encrypted before it reaches isolated storage. Reporter and staff credentials use separate token purposes and authorization boundaries. Realtime chat revalidates complaint access and supports immediate revocation.
+## Core capabilities
 
-See [Architecture and security](docs/architecture-and-security.md), [Authorization matrix](docs/authorization-matrix.md), and [Privacy data flow](docs/privacy-data-flow.md).
+- **Identity-minimized reporting** — complaint intake avoids requesting a reporter's name, phone number, exact address, or exact GPS coordinates.
+- **One-time private case access** — reporters receive a case ID and one-time access secret; only a keyed hash of the secret is retained.
+- **Structured safety triage** — deterministic answers guide review priority without narrative keyword scanning or external AI scoring.
+- **Human review controls** — immutable assessment history, review queues, restricted overrides, and explicit handling for Critical cases.
+- **Private evidence vault** — authorized evidence workflows include encryption, integrity checks, metadata minimization, and access logging.
+- **Exact-resource authorization** — reporter, NGO, investigator, administrator, and superadministrator permissions are separated and enforced per case.
+- **NGO routing and assignments** — verification state, coverage, capability, capacity, acknowledgment, reassignment, and immediate revocation are modeled explicitly.
+- **Secure staff authentication** — rotating refresh sessions, HttpOnly cookies, CSRF protection, TOTP MFA, recovery codes, and session revocation.
+- **Realtime case communication** — persistent complaint-scoped chat supports reconnection recovery and live access revocation.
+- **Escalation automation** — deadlines, scheduler leasing, retries, and idempotent internal workflow actions.
+- **Internal SOS workflow** — confirmation, cancellation, duplicate prevention, and optional encrypted location sharing without external dispatch.
+- **Bilingual and accessible interface** — English/Hindi catalogs, translation parity checks, keyboard support, responsive layouts, and automated accessibility coverage.
+- **Privacy-safe auditability** — security-relevant events are recorded without intentionally placing reporter credentials or private case content in routine logs.
 
-## Screenshots
+## Live application
 
-### Home
+| Component | Public endpoint | Purpose |
+| --- | --- | --- |
+| Web application | [satya-shield-client.vercel.app](https://satya-shield-client.vercel.app) | Public demonstration interface |
+| API service | [satyashield-api.onrender.com](https://satyashield-api.onrender.com) | Render-hosted backend |
+| Health endpoint | [API health check](https://satyashield-api.onrender.com/api/v1/health) | Service availability check |
 
-![SatyaShield home screen](docs/screenshots/home.png)
+The API uses Render's free service tier, so the first request after an idle period may take approximately 30–60 seconds. The demo uses safe, restricted integrations and does not activate real-world recipients or emergency delivery.
 
-### Anonymous complaint intake
+## Live deployment screenshots
 
-![SatyaShield anonymous complaint form](docs/screenshots/anonymous-report.png)
+The images below were captured directly from the public deployment.
 
-### Authorized staff login
+<table>
+  <tr>
+    <td width="50%" align="center">
+      <a href="docs/screenshots/home.png"><img src="docs/screenshots/home.png" alt="SatyaShield live home page" width="100%" /></a><br />
+      <sub><strong>Public home and private case entry</strong></sub>
+    </td>
+    <td width="50%" align="center">
+      <a href="docs/screenshots/anonymous-report.png"><img src="docs/screenshots/anonymous-report.png" alt="SatyaShield live anonymous complaint form" width="100%" /></a><br />
+      <sub><strong>Identity-minimized complaint intake</strong></sub>
+    </td>
+  </tr>
+  <tr>
+    <td colspan="2" align="center">
+      <a href="docs/screenshots/operator-login.png"><img src="docs/screenshots/operator-login.png" alt="SatyaShield live authorized staff login" width="49%" /></a><br />
+      <sub><strong>Protected staff workspace entrance</strong></sub>
+    </td>
+  </tr>
+</table>
 
-![SatyaShield operator login](docs/screenshots/operator-login.png)
+## Security and privacy design
+
+- Reporter and staff credentials use separate token purposes and authorization boundaries.
+- Refresh-token rotation and token-family reuse detection protect authenticated sessions.
+- Complaint access is revalidated for HTTP requests and realtime socket activity.
+- Assignment withdrawal or reassignment removes access immediately.
+- Evidence is encrypted before private storage and is never intentionally exposed as a public static upload.
+- External AI remains disabled and fails closed.
+- SOS actions remain inside SatyaShield; external delivery invocation is disabled.
+- Sensitive production values are supplied through environment configuration and are not committed to the repository.
+
+Detailed design references are available in the [architecture and security overview](docs/architecture-and-security.md), [authorization matrix](docs/authorization-matrix.md), and [privacy data flow](docs/privacy-data-flow.md).
 
 ## Technology
 
 - React 18, Vite, Tailwind CSS, and React Router
 - Node.js and Express
-- MongoDB Atlas with Mongoose
+- MongoDB Atlas and Mongoose
 - Socket.IO
 - JWT, rotating refresh tokens, TOTP, AES-GCM, HMAC, and scrypt
 - Node test runner, Playwright, and axe-core
+- Vercel frontend hosting and Render API hosting
 
-## Local setup
+## Local development
 
 Requirements: Node.js 20.12 or newer, npm, and a dedicated development MongoDB database.
 
@@ -70,7 +118,7 @@ Copy-Item server/.env.example server/.env
 Copy-Item client/.env.example client/.env
 ```
 
-Never commit `.env` files or reuse development secrets in production.
+Never commit environment files, deployment credentials, reporter credentials, or reusable secrets.
 
 ```bash
 npm run dev
@@ -90,20 +138,36 @@ npm run test:e2e --workspace client
 npm run test:mongodb --workspace server
 ```
 
-MongoDB runtime tests require an explicitly guarded test database. Automated browser tests use fake adapters and must never contact real recipients or emergency services.
+MongoDB runtime tests require an explicitly guarded test database. Automated browser suites use deterministic fixtures and fake adapters; they must never contact real recipients, providers, NGOs, emergency services, or helplines.
 
-See [Testing guide](docs/testing.md) and [Deployment guide](docs/deployment.md).
+See the [testing guide](docs/testing.md) and [deployment guide](docs/deployment.md) for the complete process.
 
-## Honest limitations
+## Deployment requirements for real operational use
 
-- No real email or notification provider is configured or verified.
-- No production helplines are published; entries require authoritative review.
+The repository is a strong engineering foundation, but a real-world deployment would require all of the following before accepting actual cases:
+
+- Legally approved operating policies, consent language, retention rules, and jurisdiction-specific review.
+- Contracted and independently verified NGOs, investigators, administrators, and escalation owners.
+- A monitored multi-instance realtime architecture with a shared Socket.IO adapter.
+- A production malware scanner and durable, private, encrypted evidence storage.
+- Verified email/notification providers and tested delivery-failure procedures.
+- Production TLS-cookie verification, secrets management, audit monitoring, backups, restoration drills, and incident response.
+- Human accessibility and screen-reader review, professional language review, and security assessment.
+- Clear service-level expectations and staffed operational processes.
+- A separately designed and authorized external emergency-response integration, if one is ever required.
+
+Until those controls exist and are independently approved, SatyaShield must remain a demonstration/internal-evaluation system.
+
+## Current limitations
+
+- No real email or external notification provider is configured or verified.
+- No production helplines are published.
 - SOS performs internal routing only and does not dispatch external help.
 - Chat is not end-to-end encrypted.
-- A production malware scanner is not configured, so production evidence availability must remain fail-closed.
-- Socket.IO is explicitly single-instance until a shared adapter is configured.
+- Evidence availability remains fail-closed because a production malware scanner and durable private storage are not configured for the public demo.
+- Socket.IO is configured for a single application instance until a shared adapter is introduced.
 - Manual screen-reader review, qualified legal/privacy review, deployed TLS-cookie verification, monitoring, and isolated backup restoration remain external readiness gates.
-- No response, complete anonymity, guaranteed deletion, legal certification, or production readiness is claimed.
+- The system does not promise response, message delivery, NGO action, complete anonymity, guaranteed deletion, legal certification, or emergency assistance.
 
 ## Documentation
 
@@ -117,3 +181,7 @@ See [Testing guide](docs/testing.md) and [Deployment guide](docs/deployment.md).
 - [Accessibility and translation status](docs/accessibility.md)
 - [Known limitations](docs/known-limitations.md)
 - [Changelog](CHANGELOG.md)
+
+## Responsible use
+
+SatyaShield is an engineering project and demonstration platform. It is not legal advice, a law-enforcement system, an emergency-dispatch service, or a guarantee of safety or organizational response. In an immediate emergency, contact the appropriate locally verified emergency service through a trusted device or person.
