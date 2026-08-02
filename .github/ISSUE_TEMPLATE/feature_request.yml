@@ -1,0 +1,30 @@
+name: Feature request
+description: Suggest a focused improvement to SatyaShield
+title: "[Feature]: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What problem should this change solve?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the behavior and intended users.
+    validations:
+      required: true
+  - type: checkboxes
+    id: considerations
+    attributes:
+      label: Considerations
+      options:
+        - label: Security and authorization impact considered
+        - label: Privacy and data-minimization impact considered
+        - label: Accessibility and bilingual-interface impact considered
+        - label: Uses synthetic examples only
+          required: true
