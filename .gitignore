@@ -1,4 +1,8 @@
 node_modules/
+client/test-results/
+client/playwright-report/
+client/blob-report/
+*.trace
 client/node_modules/
 client/dist/
 server/node_modules/

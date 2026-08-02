@@ -13,6 +13,11 @@ export default defineConfig({
   webServer: {
     command: 'npm.cmd run dev -- --host 127.0.0.1 --port 4173',
     url: 'http://127.0.0.1:4173',
+    env: {
+      VITE_API_URL: 'http://127.0.0.1:5000/api/v1',
+      VITE_REPORTER_INACTIVITY_SECONDS: '120',
+      VITE_REPORTER_LOCK_WARNING_SECONDS: '10'
+    },
     reuseExistingServer: false,
     timeout: 60_000
   },

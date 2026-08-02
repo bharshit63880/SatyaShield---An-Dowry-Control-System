@@ -11,13 +11,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "node --test test/*.test.js",
+    "test:i18n": "node scripts/audit-visible-strings.mjs --write && node scripts/check-translations.mjs",
     "test:e2e": "playwright test",
-    "test:a11y": "playwright test e2e/phase11-accessibility.spec.js"
+    "test:a11y": "playwright test e2e/accessibility.spec.js"
   },
   "dependencies": {
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.28.0",
+    "react-router-dom": "6.30.3",
     "socket.io-client": "^4.8.1"
   },
   "devDependencies": {

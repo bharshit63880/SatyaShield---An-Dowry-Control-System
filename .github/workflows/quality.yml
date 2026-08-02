@@ -1,0 +1,91 @@
+name: Quality and security
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  local-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.12.2
+          cache: npm
+      - run: npm ci
+      - run: npm run test:i18n --workspace client
+      - run: npm test --workspace client
+      - run: npm run build
+      - run: npm test --workspace server
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:a11y --workspace client -- --project=desktop-chromium
+      - name: Reject committed secrets and sensitive browser artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ! git grep -IEn '(mongodb\+srv://[^[:space:]]+:[^[:space:]]+@|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY|reporterAccessSecret["'"']?\s*[:=]\s*["'"'][^"'"']+)' -- ':!package-lock.json'
+          ! git ls-files | grep -E '(\.env$|playwright-report/|test-results/|\.zip$|\.trace$)'
+
+  guarded-atlas-regression:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      RUN_MONGODB_TESTS: 'true'
+      MONGODB_URI: ${{ secrets.TEST_MONGODB_URI }}
+      NODE_ENV: test
+      CLIENT_URL: http://127.0.0.1:4173
+      SERVER_PUBLIC_URL: http://127.0.0.1:5000
+      REPORTER_ACCESS_HMAC_KEY: ci-reporter-access-hmac-key-00000000000000000000000000000000
+      REPORTER_TOKEN_SECRET: ci-reporter-token-secret-000000000000000000000000000000000
+      REPORTER_TOKEN_AUDIENCE: satyashield-reporter-ci
+      REPORTER_TOKEN_EXPIRES_IN: 15m
+      STAFF_ACCESS_TOKEN_SECRET: ci-staff-token-secret-0000000000000000000000000000000000
+      REFRESH_TOKEN_PEPPER: ci-refresh-pepper-00000000000000000000000000000000000000
+      RECOVERY_CODE_PEPPER: ci-recovery-pepper-0000000000000000000000000000000000000
+      MFA_CHALLENGE_TOKEN_PEPPER: ci-mfa-challenge-pepper-0000000000000000000000000000000000
+      PASSWORD_RESET_TOKEN_PEPPER: ci-password-reset-pepper-000000000000000000000000000000000
+      VERIFICATION_TOKEN_PEPPER: ci-verification-pepper-0000000000000000000000000000000000
+      MFA_ENCRYPTION_KEY: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+      EVIDENCE_ENCRYPTION_KEY: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      LOCATION_ENCRYPTION_KEY: dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
+      EVIDENCE_SCANNER_MODE: development-bypass
+      AI_PROCESSING_ENABLED: 'false'
+      TRIAGE_AI_ENABLED: 'false'
+      SOS_EXTERNAL_DELIVERY_ENABLED: 'false'
+      SOS_ENABLED: 'true'
+      SOS_INTERNAL_ROUTING_ENABLED: 'true'
+      SOS_LOCATION_ENABLED: 'true'
+      SOCKET_IO_ENABLED: 'true'
+      SOCKET_SINGLE_INSTANCE_MODE: 'true'
+      ESCALATION_SCHEDULER_ENABLED: 'false'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.12.2
+          cache: npm
+      - name: Require a guarded Atlas test database
+        shell: bash
+        run: |
+          [[ "$MONGODB_URI" =~ /ss_p10_rt_[a-zA-Z0-9_]+(\?|$) ]]
+      - run: npm ci
+      - run: npm run test:mongodb --workspace server

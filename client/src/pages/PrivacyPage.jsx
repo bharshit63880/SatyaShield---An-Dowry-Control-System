@@ -1,27 +1,28 @@
 import { AI_DISCLOSURE_VERSION, PRIVACY_NOTICE_VERSION } from '../config/privacy';
 import { useLanguage } from '../context/LanguageContext';
-
 export function PrivacyPage() {
-  const { t } = useLanguage();
-  return (
-    <div className="page-shell py-12" style={{ maxWidth: 880 }}>
-      <p className="eyebrow">Privacy notice</p>
-      <h1>What SatyaShield collects and why</h1>
-      <p>This plain-language notice is structured for future Hindi translation. It is product guidance, not a substitute for legal review.</p>
-      <h2>Anonymous reports</h2>
-      <p>We do not ask for your name, email, phone number, exact address, or GPS location. Your description, optional city or district, case access credential hash, workflow data, and optional evidence are stored to operate the case.</p>
-      <h2>Evidence and access</h2>
-      <p>Accepted evidence is encrypted in private storage. Authorized staff may view it for case work. Keep the one-time access secret safe; the service stores only a keyed hash and cannot display it again.</p>
-      <h2>Operational records</h2>
-      <p>Security logs use route templates and coarse timing. Audit records store purpose-limited events and hashed resource references; they do not intentionally store raw IP addresses, browser strings, report text, or credentials.</p>
-      <h2>Optional AI processing</h2>
-      <p>AI processing is off by default. If both the service operator enables it and you opt in, up to 2,000 characters of the complaint description may be sent to the configured AI provider for risk triage. Local rules are used otherwise or if the provider fails.</p>
-      <h2>Retention and deletion</h2>
-      <p>Records carry retention eligibility and legal-hold metadata. Phase 4 only reports records eligible under the configured policy; automatic deletion is not enabled.</p>
-      <h2>Important limits</h2>
-      <p>Do not use SatyaShield as an emergency service. Network and hosting providers may process ordinary connection metadata outside the application. No delivery or response time is guaranteed.</p>
+  const {
+    t
+  } = useLanguage();
+  return <div className="page-shell py-12" style={{
+    maxWidth: 880
+  }}>
+      <p className="eyebrow">{t("visible.c385c3440806")}</p>
+      <h1>{t("visible.2c24e7dca82b")}</h1>
+      <p>{t("visible.7894f66b63eb")}</p>
+      <h2>{t("visible.b975a3af4169")}</h2>
+      <p>{t("visible.72c8d34990a9")}</p>
+      <h2>{t("visible.2a2bbc0303af")}</h2>
+      <p>{t("visible.a1f8473c1dbc")}</p>
+      <h2>{t("visible.517822d1bcd6")}</h2>
+      <p>{t("visible.a97dbe142b65")}</p>
+      <h2>{t("visible.e7c27d75a0c5")}</h2>
+      <p>{t("visible.119e6cccaefb")}</p>
+      <h2>{t("visible.48d7f6f5166b")}</h2>
+      <p>{t("visible.4a2a204d54de")}</p>
+      <h2>{t("visible.4e9942e6d2fe")}</h2>
+      <p>{t("visible.94040c478e96")}</p>
       <p>{t('privacy.help')}</p>
-      <p>Privacy notice: {PRIVACY_NOTICE_VERSION}. AI disclosure: {AI_DISCLOSURE_VERSION}. Contact channel: not yet configured.</p>
-    </div>
-  );
+      <p>{t("visible.3a2540dde435")}{PRIVACY_NOTICE_VERSION}{t("visible.4127d4ec384e")}{AI_DISCLOSURE_VERSION}{t("visible.9b5c25d3f4a0")}</p>
+    </div>;
 }

@@ -1,28 +1,31 @@
+import { useLanguage } from "../context/LanguageContext";
 import { Navigate, useLocation } from 'react-router-dom';
-
 import { useAuth } from '../hooks/useAuth';
-
-export function ProtectedRoute({ children, allowedRoles }) {
-  const { isAuthenticated, isReady, user } = useAuth();
+export function ProtectedRoute({
+  children,
+  allowedRoles
+}) {
+  const {
+    t
+  } = useLanguage();
+  const {
+    isAuthenticated,
+    isReady,
+    user
+  } = useAuth();
   const location = useLocation();
-
   if (!isReady) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-brand-950 px-6 text-brand-50">
-        <div className="rounded-3xl border border-white/10 bg-white/5 px-6 py-4 shadow-panel">
-          Checking your session...
-        </div>
-      </div>
-    );
+    return <div className="flex min-h-screen items-center justify-center bg-brand-950 px-6 text-brand-50">
+        <div className="rounded-3xl border border-white/10 bg-white/5 px-6 py-4 shadow-panel">{t("visible.6fb764a86d22")}</div>
+      </div>;
   }
-
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace state={{ from: location.pathname }} />;
+    return <Navigate to="/login" replace state={{
+      from: location.pathname
+    }} />;
   }
-
   if (allowedRoles && !allowedRoles.includes(user?.role)) {
     return <Navigate to="/dashboard" replace />;
   }
-
   return children;
 }

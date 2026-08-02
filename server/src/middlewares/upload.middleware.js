@@ -6,7 +6,10 @@ const uploader = multer({
   storage: multer.memoryStorage(),
   limits: {
     files: 1,
-    fields: 10,
+    // Complaint intake includes privacy/version metadata plus the structured
+    // safety questionnaire. Keep the bound explicit while allowing that
+    // documented schema to pass through multipart parsing.
+    fields: 32,
     fileSize: env.evidenceMaxFileSize
   }
 }).single('media');

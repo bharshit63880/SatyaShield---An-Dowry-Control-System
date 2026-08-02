@@ -4,19 +4,31 @@
   <img src="client/public/satyashield-logo.png" alt="SatyaShield logo" width="720" />
 </p>
 
-SatyaShield is a privacy-focused MERN application for reporting dowry harassment, tracking cases with complaint-scoped credentials, and coordinating authorized NGO, investigator, and administrative workflows.
+SatyaShield is a privacy-focused MERN application for reporting dowry-harassment concerns, privately tracking a case, and coordinating authorized NGO, investigator, and administrative work.
 
 > SatyaShield is not an emergency-dispatch service. It does not guarantee police, ambulance, NGO, message-delivery, or response outcomes.
 
-## Development status
+## Highlights
 
-**Approximately 65% complete · Approximately 35% remaining**
+- Anonymous complaint intake with structured safety questions and explicit privacy acknowledgment.
+- One-time reporter access secret; only its keyed hash is retained.
+- Complaint-scoped tracking, evidence, chat, and internal SOS access.
+- Encrypted private evidence vault with lifecycle and integrity controls.
+- Staff authentication with rotating sessions, CSRF protection, TOTP MFA, and recovery codes.
+- Exact-resource authorization for NGOs, investigators, administrators, and superadministrators.
+- Deterministic NGO matching, capacity checks, assignment acknowledgment, and immediate revocation.
+- Deterministic triage, immutable assessment history, and restricted human overrides.
+- Internal deadlines, idempotent escalation scheduling, and complaint-scoped Socket.IO chat.
+- English and Hindi interface catalogs with automated parity and visible-string checks.
+- Provider-neutral notification queue and review-gated legal-information architecture.
 
-The core reporting, security, evidence, staff authentication, NGO routing, case triage, escalation, realtime chat, and internal SOS capabilities are implemented and runtime-tested.
+External AI and external SOS delivery are disabled.
 
-Remaining work includes complete English and Hindi coverage, full browser-driven end-to-end testing, manual accessibility review, notification-provider integration, reviewed legal-information content, CI and security automation, production infrastructure hardening, and final readiness validation.
+## Architecture
 
-> **Current status:** Active development. SatyaShield is not production-ready.
+The React client calls a versioned Express API. MongoDB stores case and workflow records; private evidence is encrypted before it reaches isolated storage. Reporter and staff credentials use separate token purposes and authorization boundaries. Realtime chat revalidates complaint access and supports immediate revocation.
+
+See [Architecture and security](docs/architecture-and-security.md), [Authorization matrix](docs/authorization-matrix.md), and [Privacy data flow](docs/privacy-data-flow.md).
 
 ## Screenshots
 
@@ -32,27 +44,6 @@ Remaining work includes complete English and Hindi coverage, full browser-driven
 
 ![SatyaShield operator login](docs/screenshots/operator-login.png)
 
-## Implemented security architecture
-
-- Complaint-scoped reporter case ID and one-time access secret.
-- Only a keyed reporter-secret hash is stored.
-- Separate reporter and staff authentication.
-- Exact-case authorization for reporters, NGOs, investigators, admins, and superadmins.
-- Encrypted private evidence storage with lifecycle and integrity controls.
-- HttpOnly refresh cookies, CSRF protection, explicit CORS, token rotation, and reuse detection.
-- TOTP MFA, recovery codes, account-state enforcement, and session revocation.
-- Deterministic NGO eligibility, routing, capacity, assignment, and revocation.
-- Structured deterministic triage with human review for critical cases.
-- Versioned internal deadlines, escalation policies, and idempotent scheduler leasing.
-- Complaint-scoped Socket.IO chat with persistence and immediate authorization revocation.
-- Explicit SOS confirmation and cancellation with optional encrypted, minimized location.
-- Internal-only SOS routing with external emergency delivery disabled.
-- Reviewable helpline architecture with no unverified production entries.
-- Privacy-safe logs and audit allowlists.
-- External AI disabled and fail-closed.
-
-Chat is not end-to-end encrypted. Evidence is not claimed to be malware-free. Complete anonymity, guaranteed deletion, legal certification, and production readiness are not claimed.
-
 ## Technology
 
 - React 18, Vite, Tailwind CSS, and React Router
@@ -64,11 +55,7 @@ Chat is not end-to-end encrypted. Evidence is not claimed to be malware-free. Co
 
 ## Local setup
 
-### Requirements
-
-- Node.js 20.12 or newer
-- npm
-- A dedicated development MongoDB database
+Requirements: Node.js 20.12 or newer, npm, and a dedicated development MongoDB database.
 
 ```bash
 git clone https://github.com/bharshit63880/SatyaShield.git
@@ -85,8 +72,6 @@ Copy-Item client/.env.example client/.env
 
 Never commit `.env` files or reuse development secrets in production.
 
-Start the frontend and backend:
-
 ```bash
 npm run dev
 ```
@@ -97,45 +82,38 @@ npm run dev
 ## Validation
 
 ```bash
-npm test
+npm run test:i18n --workspace client
+npm test --workspace client
 npm run build
-npm run test:mongodb
+npm test --workspace server
 npm run test:e2e --workspace client
+npm run test:mongodb --workspace server
 ```
 
-Current recorded verification:
+MongoDB runtime tests require an explicitly guarded test database. Automated browser tests use fake adapters and must never contact real recipients or emergency services.
 
-- MongoDB Atlas end-to-end runtime suites: 9/9 passed.
-- Local backend suite: 44 passed.
-- Client contract suite: 15/15 passed.
-- Focused desktop and mobile Chromium E2E and accessibility suite: 16/16 passed.
-- Automated serious or critical accessibility findings on tested public routes: zero.
-- Deterministic MFA authenticated-tag tamper trials: 5,000/5,000 passed.
+See [Testing guide](docs/testing.md) and [Deployment guide](docs/deployment.md).
 
-The bilingual interface and complete browser workflow are not yet fully verified.
+## Honest limitations
 
-## Important limitations
+- No real email or notification provider is configured or verified.
+- No production helplines are published; entries require authoritative review.
+- SOS performs internal routing only and does not dispatch external help.
+- Chat is not end-to-end encrypted.
+- A production malware scanner is not configured, so production evidence availability must remain fail-closed.
+- Socket.IO is explicitly single-instance until a shared adapter is configured.
+- Manual screen-reader review, qualified legal/privacy review, deployed TLS-cookie verification, monitoring, and isolated backup restoration remain external readiness gates.
+- No response, complete anonymity, guaranteed deletion, legal certification, or production readiness is claimed.
 
-- No production helplines are published.
-- No real external SOS or emergency-service delivery exists.
-- Socket.IO currently supports one application instance; multi-instance operation requires a shared adapter.
-- Real email delivery and deployed TLS-cookie behaviour are unverified.
-- Password history is not implemented.
-- Short-lived revoked access tokens may remain usable until expiry.
-- A production malware scanner is not configured.
-- Production secrets, monitoring, backup restoration, legal review, and manual accessibility review remain outstanding.
-- Known dependency-audit findings require manual review; no breaking automatic audit fix has been applied.
+## Documentation
 
-## Repository structure
-
-```text
-SatyaShield/
-|-- client/   # React frontend, browser tests, accessibility and UI contracts
-|-- server/   # Express API, MongoDB models, security services and runtime tests
-`-- docs/
-    `-- screenshots/
-```
-
-## Responsible development
-
-Use dedicated test databases and fake adapters. Do not contact real emergency services or helplines during automated testing. Do not enable external AI or external SOS delivery without a separate security and privacy review.
+- [Architecture and security](docs/architecture-and-security.md)
+- [Authorization matrix](docs/authorization-matrix.md)
+- [Privacy data flow](docs/privacy-data-flow.md)
+- [Notifications and reviewed content](docs/notifications-and-content.md)
+- [Testing guide](docs/testing.md)
+- [Deployment guide](docs/deployment.md)
+- [Operations, backup, and incident response](docs/operations.md)
+- [Accessibility and translation status](docs/accessibility.md)
+- [Known limitations](docs/known-limitations.md)
+- [Changelog](CHANGELOG.md)

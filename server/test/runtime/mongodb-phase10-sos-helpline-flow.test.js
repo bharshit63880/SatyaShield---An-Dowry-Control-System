@@ -9,6 +9,7 @@ const runtimeEnabled = /^ss_p10_rt_[a-z0-9_]+$/i.test(databaseName);
 if (runtimeUri && !runtimeEnabled) {
   throw new Error('Phase 10 runtime test requires a dedicated ss_p10_rt_* database.');
 }
+process.env.NODE_ENV = 'test';
 process.env.AI_PROCESSING_ENABLED = 'false';
 process.env.TRIAGE_AI_ENABLED = 'false';
 process.env.ESCALATION_SCHEDULER_ENABLED = 'false';

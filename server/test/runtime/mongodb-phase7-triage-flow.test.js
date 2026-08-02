@@ -9,6 +9,7 @@ const runtimeEnabled = /^ss_p(?:[789]|10)_rt_[a-z0-9_]+$/i.test(databaseName);
 if (runtimeUri && !runtimeEnabled) throw new Error(
   'Runtime test refused: MONGODB_URI must target a dedicated Phase 7 test database.'
 );
+process.env.NODE_ENV = 'test';
 process.env.AI_PROCESSING_ENABLED = 'false';
 process.env.TRIAGE_AI_ENABLED = 'false';
 for (const [key, value] of Object.entries({

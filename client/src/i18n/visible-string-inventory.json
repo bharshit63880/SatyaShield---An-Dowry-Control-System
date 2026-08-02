@@ -1,0 +1,52 @@
+[
+  {
+    "file": "src/pages/NotFoundPage.jsx",
+    "sourceLocation": "src/pages/NotFoundPage.jsx:28",
+    "line": 28,
+    "kind": "jsx-text",
+    "originalValue": "404",
+    "finalClassification": "technical_identifier",
+    "translationKey": null,
+    "justification": "Opaque identifier, unit, code, or technical token must remain unchanged."
+  },
+  {
+    "file": "src/pages/DashboardPage.jsx",
+    "sourceLocation": "src/pages/DashboardPage.jsx:522",
+    "line": 522,
+    "kind": "jsx-text",
+    "originalValue": "access",
+    "finalClassification": "false_positive",
+    "translationKey": null,
+    "justification": "Decorative fragment in a stylized heading; surrounding accessible copy is localized."
+  },
+  {
+    "file": "src/pages/ComplaintPage.jsx",
+    "sourceLocation": "src/pages/ComplaintPage.jsx:487",
+    "line": 487,
+    "kind": "jsx-text",
+    "originalValue": "anon-",
+    "finalClassification": "technical_identifier",
+    "translationKey": null,
+    "justification": "Opaque identifier, unit, code, or technical token must remain unchanged."
+  },
+  {
+    "file": "src/pages/CaseTrackingPage.jsx",
+    "sourceLocation": "src/pages/CaseTrackingPage.jsx:458",
+    "line": 458,
+    "kind": "jsx-text",
+    "originalValue": "KB",
+    "finalClassification": "technical_identifier",
+    "translationKey": null,
+    "justification": "Opaque identifier, unit, code, or technical token must remain unchanged."
+  },
+  {
+    "file": "src/services/api.js",
+    "sourceLocation": "src/services/api.js:66",
+    "line": 66,
+    "kind": "property:message",
+    "originalValue": "Unexpected server response.",
+    "finalClassification": "api_server_controlled",
+    "translationKey": null,
+    "justification": "Transport fallback is mapped to controlled localized UI states by consumers."
+  }
+]
