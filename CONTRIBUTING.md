@@ -8,7 +8,7 @@ Thank you for helping improve SatyaShield. Contributions should preserve the pro
 - Use a dedicated development database and synthetic test data only.
 - Never submit real complaints, evidence, identities, credentials, locations, tokens, secrets, or private organization information.
 - Do not enable external AI, real emergency delivery, or unverified notification recipients.
-- Report security vulnerabilities privately as described in [SECURITY.md](SECURITY.md).
+- Do not publish sensitive vulnerability details, credentials, or personal data in a public issue.
 
 ## Development workflow
 

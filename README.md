@@ -180,7 +180,7 @@ Until those controls exist and are independently approved, SatyaShield must rema
 
 ## Contributing and license
 
-Contributions are welcome when they preserve SatyaShield's security, privacy, accessibility, and safety boundaries. Read [CONTRIBUTING.md](CONTRIBUTING.md), the [Code of Conduct](CODE_OF_CONDUCT.md), and the [Security Policy](SECURITY.md) before participating.
+Contributions are welcome when they preserve SatyaShield's security, privacy, accessibility, and safety boundaries. Read [CONTRIBUTING.md](CONTRIBUTING.md) before participating.
 
 SatyaShield is available under the [MIT License](LICENSE). The license permits use, modification, and distribution of the software, but it does not provide operational approval, legal certification, emergency-service authorization, or any warranty.
 
