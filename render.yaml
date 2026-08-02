@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: dahej-control-system-api
+    name: satyashield-api
     runtime: node
     rootDir: server
     plan: free
@@ -26,6 +26,22 @@ services:
         sync: false
       - key: REPORTER_TOKEN_SECRET
         sync: false
+      - key: STAFF_ACCESS_TOKEN_SECRET
+        sync: false
+      - key: REFRESH_TOKEN_PEPPER
+        sync: false
+      - key: VERIFICATION_TOKEN_PEPPER
+        sync: false
+      - key: PASSWORD_RESET_TOKEN_PEPPER
+        sync: false
+      - key: MFA_CHALLENGE_TOKEN_PEPPER
+        sync: false
+      - key: RECOVERY_CODE_PEPPER
+        sync: false
+      - key: MFA_ENCRYPTION_KEY
+        sync: false
+      - key: EVIDENCE_ENCRYPTION_KEY
+        sync: false
       - key: REPORTER_TOKEN_AUDIENCE
         value: satyashield-reporter-case
       - key: REPORTER_TOKEN_EXPIRES_IN
@@ -36,6 +52,10 @@ services:
         value: dahej-control-system-admin
       - key: LOCATION_ENCRYPTION_KEY
         sync: false
+      - key: EVIDENCE_STORAGE_DIR
+        value: /tmp/satyashield-evidence
+      - key: EVIDENCE_SCANNER_MODE
+        value: required
       - key: JWT_EXPIRES_IN
         value: 1d
       - key: ADMIN_EMAIL
@@ -46,7 +66,21 @@ services:
         sync: false
       - key: BCRYPT_SALT_ROUNDS
         value: 10
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: OPENAI_MODEL
-        value: gpt-5-mini
+      - key: AI_PROCESSING_ENABLED
+        value: false
+      - key: TRIAGE_AI_ENABLED
+        value: false
+      - key: SOCKET_IO_ENABLED
+        value: true
+      - key: SOCKET_SINGLE_INSTANCE_MODE
+        value: true
+      - key: SOCKET_ADAPTER
+        value: memory
+      - key: SOS_ENABLED
+        value: true
+      - key: SOS_LOCATION_ENABLED
+        value: true
+      - key: SOS_INTERNAL_ROUTING_ENABLED
+        value: true
+      - key: SOS_EXTERNAL_DELIVERY_ENABLED
+        value: false
