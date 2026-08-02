@@ -33,7 +33,10 @@ async function bootstrap() {
   process.on('SIGTERM', shutdown);
 }
 
-bootstrap().catch(() => {
-  logEvent('error', 'server_start_failed');
+bootstrap().catch((error) => {
+  logEvent('error', 'server_start_failed', {
+    errorName: String(error?.name || 'Error').slice(0, 80),
+    errorCode: String(error?.code || 'UNKNOWN').slice(0, 80)
+  });
   process.exit(1);
 });
