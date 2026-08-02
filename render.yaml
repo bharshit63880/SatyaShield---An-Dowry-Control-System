@@ -8,8 +8,8 @@ services:
     startCommand: npm start
     healthCheckPath: /api/v1/health
     disk:
-      name: uploads
-      mountPath: /opt/render/project/uploads
+      name: private-evidence
+      mountPath: /opt/render/project/private-data
       sizeGB: 1
     envVars:
       - key: NODE_ENV
