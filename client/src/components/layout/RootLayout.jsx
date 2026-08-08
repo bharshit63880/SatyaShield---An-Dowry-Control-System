@@ -6,11 +6,36 @@ import { useAuth } from '../../hooks/useAuth';
 import { performQuickExit } from '../../services/quick-exit';
 const publicNavigation = [{
   to: '/',
-  labelKey: 'nav.home'
+  labelKey: 'nav.home',
+  icon: 'home'
 }, {
   to: '/report',
-  labelKey: 'nav.report'
+  labelKey: 'nav.report',
+  icon: 'report'
 }];
+
+function NavigationIcon({ name }) {
+  if (name === 'report') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M7 3.75h7.6L19 8.15v12.1H7z" />
+        <path d="M14.5 3.9v4.4h4.35M10 12h6M10 15.5h6" />
+      </svg>;
+  }
+
+  if (name === 'dashboard') {
+    return <svg viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3.75" y="3.75" width="6.5" height="6.5" rx="1.5" />
+        <rect x="13.75" y="3.75" width="6.5" height="6.5" rx="1.5" />
+        <rect x="3.75" y="13.75" width="6.5" height="6.5" rx="1.5" />
+        <rect x="13.75" y="13.75" width="6.5" height="6.5" rx="1.5" />
+      </svg>;
+  }
+
+  return <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M3.75 11.1 12 4l8.25 7.1v8.15H14.8V14h-5.6v5.25H3.75z" />
+    </svg>;
+}
+
 export function RootLayout() {
   const {
     isAuthenticated,
@@ -27,7 +52,8 @@ export function RootLayout() {
   const sensitiveReporterPage = location.pathname === '/report' || location.pathname === '/track' || location.pathname.startsWith('/track/');
   const navigation = isAuthenticated ? [...publicNavigation, {
     to: '/dashboard',
-    labelKey: 'nav.dashboard'
+    labelKey: 'nav.dashboard',
+    icon: 'dashboard'
   }] : publicNavigation;
   useEffect(() => {
     document.title = sensitiveReporterPage ? 'SatyaShield — Secure page' : 'SatyaShield';
@@ -50,11 +76,12 @@ export function RootLayout() {
             <img aria-hidden="true" className="app-brand-mark" src="/favicon.png" alt="" />
             <span><strong>{t('app.name')}</strong><small>{t('app.tagline')}</small></span>
           </Link>
-          <nav className="desktop-navigation" aria-label={t("visible.efe10c80ec8a")}>
+          <nav className="desktop-navigation neumorphic-nav" aria-label={t("visible.efe10c80ec8a")}>
             {navigation.map(item => <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({
             isActive
           }) => `nav-item ${isActive ? 'nav-active' : ''}`}>
-                {t(item.labelKey)}
+                <span className="nav-icon"><NavigationIcon name={item.icon} /></span>
+                <span className="nav-label">{t(item.labelKey)}</span>
               </NavLink>)}
           </nav>
           <div className="header-actions">
@@ -79,7 +106,8 @@ export function RootLayout() {
             {navigation.map(item => <NavLink key={item.to} to={item.to} end={item.to === '/'} onClick={() => setMobileOpen(false)} className={({
           isActive
         }) => `nav-item ${isActive ? 'nav-active' : ''}`}>
-                {t(item.labelKey)}
+                <span className="nav-icon"><NavigationIcon name={item.icon} /></span>
+                <span className="nav-label">{t(item.labelKey)}</span>
               </NavLink>)}
           </nav> : null}
       </header>
