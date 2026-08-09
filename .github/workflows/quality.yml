@@ -29,7 +29,8 @@ jobs:
       - run: npm run test:i18n --workspace client
       - run: npm test --workspace client
       - run: npm run build
-      - run: npm test --workspace server
+      - run: npm run test:unit --workspace server
+      - run: npm run test:integration --workspace server
       - run: npm audit --omit=dev --audit-level=high
       - run: npx playwright install --with-deps chromium
       - run: npm run test:a11y --workspace client -- --project=desktop-chromium

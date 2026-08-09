@@ -9,6 +9,7 @@ import investigatorRoutes from './investigator.routes.js';
 import chatRoutes from './chat.routes.js';
 import platformRoutes from './platform.routes.js';
 import { authenticate } from '../middlewares/auth.middleware.js';
+import { getReadinessSnapshot } from '../services/readiness.service.js';
 
 const router = Router();
 
@@ -16,6 +17,19 @@ router.get('/health', (_req, res) => {
   res.status(200).json({
     success: true,
     message: 'Server is healthy.'
+  });
+});
+
+router.get('/live', (_req, res) => {
+  res.status(200).json({ success: true, message: 'Service is live.' });
+});
+
+router.get('/ready', (_req, res) => {
+  const readiness = getReadinessSnapshot();
+  res.status(readiness.ready ? 200 : 503).json({
+    success: readiness.ready,
+    message: readiness.ready ? 'Service is ready.' : 'Service is not ready.',
+    data: { checks: readiness.checks }
   });
 });
 

@@ -8,7 +8,9 @@ const {
 } = await import('../../src/utils/auth-crypto.js');
 const { signAccessToken, verifyAccessToken } = await import('../../src/utils/jwt.js');
 const { env } = await import('../../src/config/env.js');
-const { hashPassword, verifyPassword } = await import('../../src/services/password.service.js');
+const {
+  assertPasswordNotReused, hashPassword, verifyPassword
+} = await import('../../src/services/password.service.js');
 const { generateTOTP, verifyTOTPWithStep } = await import('../../src/utils/totp.js');
 
 test('purpose digests are deterministic and separated', () => {
@@ -67,4 +69,15 @@ test('new passwords use versioned scrypt and verify long passphrases', async () 
   assert.equal(encoded.includes(password), false);
   assert.equal(await verifyPassword(password, encoded), true);
   assert.equal(await verifyPassword(`${password}x`, encoded), false);
+});
+
+test('recent password history prevents reuse without storing plaintext', async () => {
+  const previous = await hashPassword('Previous unique passphrase 2026!');
+  await assert.rejects(
+    assertPasswordNotReused('Previous unique passphrase 2026!', [previous]),
+    (error) => error?.code === 'AUTH_PASSWORD_REUSED'
+  );
+  await assert.doesNotReject(
+    assertPasswordNotReused('Different unique passphrase 2026!', [previous])
+  );
 });

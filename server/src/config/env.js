@@ -15,9 +15,7 @@ const requiredVariables = [
   'RECOVERY_CODE_PEPPER',
   'MFA_ENCRYPTION_KEY',
   'LOCATION_ENCRYPTION_KEY',
-  'EVIDENCE_ENCRYPTION_KEY',
-  'ADMIN_EMAIL',
-  'ADMIN_PASSWORD'
+  'EVIDENCE_ENCRYPTION_KEY'
 ];
 
 for (const variable of requiredVariables) {
@@ -134,6 +132,14 @@ export const env = {
     'EVIDENCE_ENCRYPTION_VERSION'
   ),
   evidenceStorageDir: process.env.EVIDENCE_STORAGE_DIR?.trim() || 'private-data/evidence',
+  evidenceStorageProvider: process.env.EVIDENCE_STORAGE_PROVIDER?.trim() || 'local',
+  evidenceObjectBucket: process.env.EVIDENCE_OBJECT_BUCKET?.trim() || '',
+  evidenceObjectRegion: process.env.EVIDENCE_OBJECT_REGION?.trim() || '',
+  evidenceObjectEndpoint: process.env.EVIDENCE_OBJECT_ENDPOINT?.trim() || '',
+  evidenceObjectPrefix: process.env.EVIDENCE_OBJECT_PREFIX?.trim() || 'satyashield-evidence',
+  evidenceObjectAccessKeyId: process.env.EVIDENCE_OBJECT_ACCESS_KEY_ID?.trim() || '',
+  evidenceObjectSecretAccessKey: process.env.EVIDENCE_OBJECT_SECRET_ACCESS_KEY || '',
+  evidenceObjectForcePathStyle: parseBoolean(process.env.EVIDENCE_OBJECT_FORCE_PATH_STYLE, false),
   evidenceMaxFileSize: parseNumber(
     process.env.EVIDENCE_MAX_FILE_SIZE,
     30 * 1024 * 1024,
@@ -143,12 +149,20 @@ export const env = {
     process.env.NODE_ENV === 'production' ? 'required' : 'development-bypass'
   ),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN ?? '1d',
-  adminEmail: process.env.ADMIN_EMAIL.toLowerCase(),
-  adminPassword: process.env.ADMIN_PASSWORD,
+  adminEmail: process.env.ADMIN_EMAIL?.toLowerCase() || '',
+  adminPassword: process.env.ADMIN_PASSWORD || '',
   superAdminEmail: process.env.SUPERADMIN_EMAIL?.toLowerCase() || '',
   superAdminPassword: process.env.SUPERADMIN_PASSWORD || '',
   clientUrls: parseUrlList(process.env.CLIENT_URL, 'http://localhost:5173'),
   bcryptSaltRounds: parseNumber(process.env.BCRYPT_SALT_ROUNDS, 10, 'BCRYPT_SALT_ROUNDS'),
+  passwordHistoryCount: parseNumber(
+    process.env.PASSWORD_HISTORY_COUNT, 5, 'PASSWORD_HISTORY_COUNT'
+  ),
+  evidenceScannerUrl: process.env.EVIDENCE_SCANNER_URL?.trim() || '',
+  evidenceScannerToken: process.env.EVIDENCE_SCANNER_TOKEN || '',
+  evidenceScannerTimeoutMs: parseNumber(
+    process.env.EVIDENCE_SCANNER_TIMEOUT_MS, 15000, 'EVIDENCE_SCANNER_TIMEOUT_MS'
+  ),
   openaiApiKey: process.env.OPENAI_API_KEY?.trim() ?? '',
   openaiModel: process.env.OPENAI_MODEL?.trim() || 'gpt-5-mini',
   aiProcessingEnabled: parseBoolean(process.env.AI_PROCESSING_ENABLED, false),
@@ -242,6 +256,31 @@ export const env = {
 
 if (!['none', 'loopback', 'single'].includes(env.trustProxyMode)) {
   throw new Error('TRUST_PROXY_MODE must be none, loopback, or single.');
+}
+if (!Number.isInteger(env.passwordHistoryCount) ||
+    env.passwordHistoryCount < 1 || env.passwordHistoryCount > 24) {
+  throw new Error('PASSWORD_HISTORY_COUNT must be an integer between 1 and 24.');
+}
+if (!['local', 'object'].includes(env.evidenceStorageProvider)) {
+  throw new Error('EVIDENCE_STORAGE_PROVIDER must be local or object.');
+}
+if (env.nodeEnv === 'production' && env.evidenceStorageProvider !== 'object') {
+  throw new Error('Production requires durable private object evidence storage.');
+}
+if (env.evidenceStorageProvider === 'object' && (
+  !env.evidenceObjectBucket || !env.evidenceObjectRegion ||
+  !env.evidenceObjectAccessKeyId || !env.evidenceObjectSecretAccessKey
+)) {
+  throw new Error('Private object evidence storage credentials are incomplete.');
+}
+if (!['development-bypass', 'http'].includes(env.evidenceScannerMode)) {
+  throw new Error('EVIDENCE_SCANNER_MODE must be development-bypass or http.');
+}
+if (env.nodeEnv === 'production' && env.evidenceScannerMode !== 'http') {
+  throw new Error('Production requires the configured evidence scanner adapter.');
+}
+if (env.evidenceScannerMode === 'http' && (!env.evidenceScannerUrl || !env.evidenceScannerToken)) {
+  throw new Error('Evidence scanner URL and token are required for HTTP scanning.');
 }
 if (env.nodeEnv === 'production' && env.trustProxyMode === 'single') {
   throw new Error('TRUST_PROXY_MODE=single is not permitted in production.');

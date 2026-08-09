@@ -6,7 +6,7 @@ import { EvidenceHistory } from '../models/evidence-history.model.js';
 import { ApiError } from '../utils/ApiError.js';
 import { validateEvidenceFile } from './evidence-file-validation.service.js';
 import { getEvidenceScanner } from './evidence-scanner.service.js';
-import { localPrivateStorageProvider } from './storage/local-private-storage.provider.js';
+import { getEvidenceStorageProvider } from './storage/index.js';
 
 function actorFromRequest(req) {
   return {
@@ -33,7 +33,7 @@ export async function createVaultEvidence({
   complaintId,
   req,
   reporterVisible = true,
-  storage = localPrivateStorageProvider,
+  storage = getEvidenceStorageProvider(),
   scanner = getEvidenceScanner(),
   evidenceModel = Evidence
 }) {
@@ -96,6 +96,15 @@ export async function createVaultEvidence({
     await history(evidence, 'scan_failed', actor, { result: 'infected' });
     await history(evidence, 'quarantined', actor);
   } else if (scan.status === 'clean') {
+    try {
+      await storage.makeAvailable(stored.storageId);
+    } catch {
+      evidence.scanStatus = 'failed';
+      evidence.lifecycleStatus = 'pending_scan';
+      await evidence.save();
+      await history(evidence, 'scan_failed', actor, { result: 'storage_promotion_failed' });
+      return evidence;
+    }
     evidence.scanStatus = 'clean';
     evidence.lifecycleStatus = 'available';
     evidence.availableAt = new Date();
@@ -123,7 +132,7 @@ export async function createVaultEvidence({
 export async function openVaultEvidence({
   evidence,
   req,
-  storage = localPrivateStorageProvider
+  storage = getEvidenceStorageProvider()
 }) {
   if (evidence.lifecycleStatus !== 'available') {
     throw new ApiError(409, 'Evidence is not available for download.', {
@@ -154,7 +163,7 @@ export function safeDownloadFilename(name, extension) {
   return `${withoutExtension || 'evidence'}${extension}`;
 }
 
-export async function quarantineVaultEvidence(evidence, req, storage = localPrivateStorageProvider) {
+export async function quarantineVaultEvidence(evidence, req, storage = getEvidenceStorageProvider()) {
   if (evidence.storageId) await storage.quarantine(evidence.storageId);
   evidence.lifecycleStatus = 'quarantined';
   evidence.quarantinedAt = new Date();
@@ -163,7 +172,7 @@ export async function quarantineVaultEvidence(evidence, req, storage = localPriv
   return evidence;
 }
 
-export async function deleteVaultEvidence(evidence, req, storage = localPrivateStorageProvider) {
+export async function deleteVaultEvidence(evidence, req, storage = getEvidenceStorageProvider()) {
   if (evidence.storageId) await storage.delete(evidence.storageId);
   evidence.lifecycleStatus = 'deleted';
   evidence.deletedAt = new Date();

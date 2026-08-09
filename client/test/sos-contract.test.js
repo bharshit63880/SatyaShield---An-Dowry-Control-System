@@ -11,6 +11,8 @@ const api = fs.readFileSync(path.join(root, 'src/services/api.js'), 'utf8');
 const englishCopy = Object.values(translations.en).join('\n');
 
 test('Phase 10 SOS UI requires confirmation, supports cancellation, and defaults location off', () => {
+  assert.match(englishCopy, /Request urgent internal support/);
+  assert.match(englishCopy, /does not contact police, ambulance or emergency services/);
   assert.match(englishCopy, /I understand this is an internal safety request/);
   assert.match(tracking, /disabled=\{!sosNoticeAccepted\}/);
   assert.match(englishCopy, /Cancellation countdown/);
@@ -18,6 +20,7 @@ test('Phase 10 SOS UI requires confirmation, supports cancellation, and defaults
   assert.match(tracking, /useState\(false\).*shareOneTimeLocation/s);
   assert.match(englishCopy, /This is off by default/);
   assert.match(englishCopy, /created without location because location permission was unavailable/);
+  assert.match(tracking, /sosFeatures\.internalSupport/);
 });
 
 test('Phase 10 UI and APIs make no dispatch claim and expose deliberate verified contacts only', () => {

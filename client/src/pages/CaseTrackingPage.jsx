@@ -1,6 +1,6 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { exchangeReporterAccessRequest, downloadComplaintEvidenceRequest, getChatMessagesRequest, getComplaintEvidenceRequest, getComplaintTimelineRequest, getComplaintTriageRequest, getPublicComplaintRequest, sendChatMessageRequest, startSosConfirmationRequest, cancelSosRequest, activateSosRequest, getCurrentSosRequest, getVerifiedHelplinesRequest, uploadComplaintEvidenceRequest } from '../services/api';
+import { exchangeReporterAccessRequest, downloadComplaintEvidenceRequest, getChatMessagesRequest, getComplaintEvidenceRequest, getComplaintTimelineRequest, getComplaintTriageRequest, getPublicComplaintRequest, sendChatMessageRequest, startSosConfirmationRequest, cancelSosRequest, activateSosRequest, getCurrentSosRequest, getVerifiedHelplinesRequest, getPlatformConfigRequest, uploadComplaintEvidenceRequest } from '../services/api';
 import { createCaseChatSocket, sendRealtimeMessage } from '../services/realtime-chat';
 import { useLanguage } from '../context/LanguageContext';
 import { useReporterInactivityLock } from '../hooks/useReporterInactivityLock';
@@ -44,6 +44,7 @@ export function CaseTrackingPage() {
   const [shareOneTimeLocation, setShareOneTimeLocation] = useState(false);
   const [sosSecondsRemaining, setSosSecondsRemaining] = useState(0);
   const [helplines, setHelplines] = useState([]);
+  const [sosFeatures, setSosFeatures] = useState({ internalSupport: false, location: false });
   const chatSocketRef = useRef(null);
   function mergeMessage(message) {
     setMessages(current => {
@@ -86,9 +87,9 @@ export function CaseTrackingPage() {
     setIsLoading(true);
     setErrorState(null);
     try {
-      const [complaintRes, timelineRes, evidenceRes, chatRes, triageRes, sosRes, helpRes] = await Promise.all([getPublicComplaintRequest(activeCaseId, token), getComplaintTimelineRequest(activeCaseId, token), getComplaintEvidenceRequest(activeCaseId, token), getChatMessagesRequest(token, activeCaseId), getComplaintTriageRequest(activeCaseId, token), getCurrentSosRequest(token, activeCaseId), getVerifiedHelplinesRequest({
+      const [complaintRes, timelineRes, evidenceRes, chatRes, triageRes, sosRes, helpRes, platformRes] = await Promise.all([getPublicComplaintRequest(activeCaseId, token), getComplaintTimelineRequest(activeCaseId, token), getComplaintEvidenceRequest(activeCaseId, token), getChatMessagesRequest(token, activeCaseId), getComplaintTriageRequest(activeCaseId, token), getCurrentSosRequest(token, activeCaseId), getVerifiedHelplinesRequest({
         country: 'in'
-      })]);
+      }), getPlatformConfigRequest()]);
       startTransition(() => {
         setComplaint(complaintRes.data.complaint);
         setTimeline(timelineRes.data.history);
@@ -97,6 +98,10 @@ export function CaseTrackingPage() {
         setTriage(triageRes.data.triage);
         setSos(sosRes.data.sos);
         setHelplines(helpRes.data.entries);
+        setSosFeatures({
+          internalSupport: platformRes.data.features.sosInternalSupport === true,
+          location: platformRes.data.features.sosLocation === true
+        });
       });
     } catch (error) {
       if (error.code === 'REPORTER_ACCESS_EXPIRED') {
@@ -396,9 +401,10 @@ export function CaseTrackingPage() {
               </p> : null}
           </section>
           <section className="surface-panel border-rose-200 p-6 sm:p-8">
-            <h2 className="text-xl font-semibold text-rose-950">{t("visible.fe5cd0778779")}</h2>
-            <p className="mt-2 text-sm leading-6 text-rose-800">{t("visible.3ed881e6a684")}</p>
-            {!sos || ['cancelled', 'resolved', 'expired', 'closed', 'false_alarm_marked'].includes(sos.state) ? !showSosConfirmation ? <button type="button" className="button-primary mt-4" onClick={() => setShowSosConfirmation(true)}>{t("visible.4ebb5b6037bc")}</button> : <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <h2 className="text-xl font-semibold text-rose-950">{t('sos.title')}</h2>
+            <p className="mt-2 text-sm leading-6 text-rose-800">{t('sos.warning')}</p>
+            {!sosFeatures.internalSupport ? <p className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900" role="status">{t('sos.unavailable')}</p> : null}
+            {sosFeatures.internalSupport && (!sos || ['cancelled', 'resolved', 'expired', 'closed', 'false_alarm_marked'].includes(sos.state)) ? !showSosConfirmation ? <button type="button" className="button-primary mt-4" onClick={() => setShowSosConfirmation(true)}>{t('sos.request')}</button> : <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
                   <label className="flex items-start gap-3 text-sm text-rose-950">
                     <input type="checkbox" checked={sosNoticeAccepted} onChange={event => setSosNoticeAccepted(event.target.checked)} />
                     <span>{t("visible.b565d4db7b5c")}</span>
@@ -410,10 +416,10 @@ export function CaseTrackingPage() {
                 </div> : null}
             {sos?.state === 'confirmation_pending' ? <div className="mt-4 rounded-2xl border border-rose-200 p-4" aria-live="polite">
                 <p className="font-semibold text-rose-950">{t("visible.688608c9ec97")}{sosSecondsRemaining}{t("visible.59f006d63bd0")}</p>
-                <label className="mt-3 flex items-start gap-3 text-sm text-brand-700">
-                  <input type="checkbox" checked={shareOneTimeLocation} onChange={event => setShareOneTimeLocation(event.target.checked)} />
-                  <span>{t("visible.a4992c41fad8")}</span>
-                </label>
+                {sosFeatures.location ? <label className="mt-3 flex items-start gap-3 text-sm text-brand-700">
+                    <input type="checkbox" checked={shareOneTimeLocation} onChange={event => setShareOneTimeLocation(event.target.checked)} />
+                    <span>{t('sos.location')}</span>
+                  </label> : <p className="mt-3 text-sm text-brand-700">{t('sos.locationUnavailable')}</p>}
                 <div className="mt-4 flex flex-wrap gap-3">
                   <button type="button" className="button-secondary" onClick={handleCancelSos}>{t("visible.56196683592d")}</button>
                   <button type="button" className="button-primary" disabled={sosSecondsRemaining > 0} onClick={handleActivateSos}>{t("visible.9f96d3783f93")}</button>

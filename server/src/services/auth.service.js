@@ -13,7 +13,8 @@ import {
 } from '../utils/auth-crypto.js';
 import { generateBase32Secret, verifyTOTPWithStep } from '../utils/totp.js';
 import {
-  assertPasswordPolicy, hashPassword, passwordNeedsRehash, verifyPassword
+  assertPasswordNotReused, assertPasswordPolicy, hashPassword,
+  passwordNeedsRehash, verifyPassword
 } from './password.service.js';
 import { createAuditLog } from './audit.service.js';
 import { deliverAuthChallenge } from './auth-delivery.service.js';
@@ -317,7 +318,10 @@ export async function requestPasswordReset(email, req) {
 export async function resetPassword({ token, newPassword }, req) {
   assertPasswordPolicy(newPassword);
   const challenge = await consumeChallenge(token, 'password_reset');
-  const user = await User.findById(challenge.userId);
+  const user = await User.findById(challenge.userId).select('+passwordHistory');
+  await assertPasswordNotReused(newPassword, [user.passwordHash, ...(user.passwordHistory || [])]);
+  user.passwordHistory = [user.passwordHash, ...(user.passwordHistory || [])]
+    .slice(0, env.passwordHistoryCount);
   user.passwordHash = await hashPassword(newPassword);
   user.passwordChangedAt = new Date();
   user.authVersion += 1;
@@ -336,13 +340,16 @@ export async function resetPassword({ token, newPassword }, req) {
 export async function changePassword(userId, proof, req) {
   const { currentPassword, newPassword } = proof;
   const user = await User.findById(userId)
-    .select('+passwordHash +mfaSecretEncrypted +mfaLastAcceptedStep');
+    .select('+passwordHash +passwordHistory +mfaSecretEncrypted +mfaLastAcceptedStep');
   if (!await verifyPassword(currentPassword, user.passwordHash)) {
     throw new ApiError(401, 'Current password is incorrect.', { code: 'AUTH_REAUTH_FAILED' });
   }
   if (user.mfaEnabled) {
     await requireSecondFactor(user, proof);
   }
+  await assertPasswordNotReused(newPassword, [user.passwordHash, ...(user.passwordHistory || [])]);
+  user.passwordHistory = [user.passwordHash, ...(user.passwordHistory || [])]
+    .slice(0, env.passwordHistoryCount);
   user.passwordHash = await hashPassword(newPassword);
   user.passwordChangedAt = new Date();
   user.authVersion += 1;

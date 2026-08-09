@@ -5,13 +5,15 @@ import path from 'path';
 import { env } from '../../config/env.js';
 import { privateEvidenceDirectory } from '../../config/paths.js';
 import { ApiError } from '../../utils/ApiError.js';
+import { EvidenceStorageProvider } from './evidence-storage.provider.js';
 
 const HEADER = Buffer.from('SSV1');
 const IV_LENGTH = 12;
 const TAG_LENGTH = 16;
 
-export class LocalPrivateStorageProvider {
+export class LocalPrivateStorageProvider extends EvidenceStorageProvider {
   constructor({ rootDirectory = privateEvidenceDirectory, keyHex = env.evidenceEncryptionKey } = {}) {
+    super();
     this.name = 'local_private';
     this.rootDirectory = path.resolve(rootDirectory);
     this.key = Buffer.from(keyHex, 'hex');
@@ -93,6 +95,10 @@ export class LocalPrivateStorageProvider {
   }
 
   async quarantine(storageId) {
+    return this.exists(storageId);
+  }
+
+  async makeAvailable(storageId) {
     return this.exists(storageId);
   }
 

@@ -34,6 +34,11 @@ const userSchema = new mongoose.Schema(
       type: String,
       required: true
     },
+    passwordHistory: {
+      type: [String],
+      default: [],
+      select: false
+    },
     role: {
       type: String,
       enum: ['user', 'ngo', 'investigator', 'admin', 'superadmin'],

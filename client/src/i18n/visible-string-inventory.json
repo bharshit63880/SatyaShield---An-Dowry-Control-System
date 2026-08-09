@@ -31,8 +31,8 @@
   },
   {
     "file": "src/pages/CaseTrackingPage.jsx",
-    "sourceLocation": "src/pages/CaseTrackingPage.jsx:458",
-    "line": 458,
+    "sourceLocation": "src/pages/CaseTrackingPage.jsx:464",
+    "line": 464,
     "kind": "jsx-text",
     "originalValue": "KB",
     "finalClassification": "technical_identifier",
@@ -41,8 +41,8 @@
   },
   {
     "file": "src/services/api.js",
-    "sourceLocation": "src/services/api.js:66",
-    "line": 66,
+    "sourceLocation": "src/services/api.js:70",
+    "line": 70,
     "kind": "property:message",
     "originalValue": "Unexpected server response.",
     "finalClassification": "api_server_controlled",

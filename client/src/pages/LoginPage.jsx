@@ -3,6 +3,7 @@ import { startTransition, useEffect, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 import { forgotPasswordRequest, resetPasswordRequest, registerNgoRequest } from '../services/api';
+import { safeInternalPath } from '../utils/safe-navigation';
 const securityFeatures = [{
   icon: '🔐',
   textKey: 'visible.8fe1b41f18e7'
@@ -54,7 +55,7 @@ export function LoginPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const destination = location.state?.from ?? '/dashboard';
+  const destination = safeInternalPath(location.state?.from);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const resetToken = params.get('resetToken');

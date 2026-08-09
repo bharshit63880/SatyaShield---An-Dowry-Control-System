@@ -6,7 +6,7 @@ services:
     plan: free
     buildCommand: npm install
     startCommand: npm start
-    healthCheckPath: /api/v1/health
+    healthCheckPath: /api/v1/ready
     envVars:
       - key: NODE_ENV
         value: production
@@ -54,14 +54,26 @@ services:
         sync: false
       - key: EVIDENCE_STORAGE_DIR
         value: /tmp/satyashield-evidence
+      - key: EVIDENCE_STORAGE_PROVIDER
+        value: object
+      - key: EVIDENCE_OBJECT_BUCKET
+        sync: false
+      - key: EVIDENCE_OBJECT_REGION
+        sync: false
+      - key: EVIDENCE_OBJECT_ENDPOINT
+        sync: false
+      - key: EVIDENCE_OBJECT_ACCESS_KEY_ID
+        sync: false
+      - key: EVIDENCE_OBJECT_SECRET_ACCESS_KEY
+        sync: false
       - key: EVIDENCE_SCANNER_MODE
-        value: required
+        value: http
+      - key: EVIDENCE_SCANNER_URL
+        sync: false
+      - key: EVIDENCE_SCANNER_TOKEN
+        sync: false
       - key: JWT_EXPIRES_IN
         value: 1d
-      - key: ADMIN_EMAIL
-        sync: false
-      - key: ADMIN_PASSWORD
-        sync: false
       - key: CLIENT_URL
         sync: false
       - key: BCRYPT_SALT_ROUNDS

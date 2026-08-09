@@ -44,3 +44,13 @@ export async function verifyPassword(password, encoded) {
 export function passwordNeedsRehash(encoded) {
   return !encoded?.startsWith('scrypt$v1$16384$8$1$');
 }
+
+export async function assertPasswordNotReused(password, hashes = []) {
+  for (const encoded of hashes.filter(Boolean)) {
+    if (await verifyPassword(password, encoded)) {
+      throw new ApiError(400, 'Choose a password that has not been used recently.', {
+        code: 'AUTH_PASSWORD_REUSED'
+      });
+    }
+  }
+}
