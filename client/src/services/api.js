@@ -13,6 +13,10 @@ let staffAccessToken = null;
 let csrfToken = null;
 let refreshPromise = null;
 
+export function getPlatformConfigRequest() {
+  return request('/platform/config');
+}
+
 export function setStaffAuthState(nextAccessToken, nextCsrfToken = csrfToken) {
   staffAccessToken = nextAccessToken;
   csrfToken = nextCsrfToken;

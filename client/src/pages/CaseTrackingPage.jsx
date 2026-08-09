@@ -1,6 +1,6 @@
 import { startTransition, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { exchangeReporterAccessRequest, downloadComplaintEvidenceRequest, getChatMessagesRequest, getComplaintEvidenceRequest, getComplaintTimelineRequest, getComplaintTriageRequest, getPublicComplaintRequest, sendChatMessageRequest, startSosConfirmationRequest, cancelSosRequest, activateSosRequest, getCurrentSosRequest, getVerifiedHelplinesRequest, uploadComplaintEvidenceRequest } from '../services/api';
+import { exchangeReporterAccessRequest, downloadComplaintEvidenceRequest, getChatMessagesRequest, getComplaintEvidenceRequest, getComplaintTimelineRequest, getComplaintTriageRequest, getPublicComplaintRequest, sendChatMessageRequest, startSosConfirmationRequest, cancelSosRequest, activateSosRequest, getCurrentSosRequest, getVerifiedHelplinesRequest, getPlatformConfigRequest, uploadComplaintEvidenceRequest } from '../services/api';
 import { createCaseChatSocket, sendRealtimeMessage } from '../services/realtime-chat';
 import { useLanguage } from '../context/LanguageContext';
 import { useReporterInactivityLock } from '../hooks/useReporterInactivityLock';
@@ -44,7 +44,10 @@ export function CaseTrackingPage() {
   const [shareOneTimeLocation, setShareOneTimeLocation] = useState(false);
   const [sosSecondsRemaining, setSosSecondsRemaining] = useState(0);
   const [helplines, setHelplines] = useState([]);
+  const [sosFeatures, setSosFeatures] = useState({ internalSupport: false, location: false });
+  const [sosAction, setSosAction] = useState('idle');
   const chatSocketRef = useRef(null);
+  const sosActionRef = useRef(false);
   function mergeMessage(message) {
     setMessages(current => {
       if (current.some(item => message.messageId && item.messageId === message.messageId || message.sequence && item.sequence === message.sequence)) return current;
@@ -62,6 +65,9 @@ export function CaseTrackingPage() {
     setEvidenceList([]);
     setMessages([]);
     setSos(null);
+    setSosFeatures({ internalSupport: false, location: false });
+    setSosAction('idle');
+    sosActionRef.current = false;
     setShowSosConfirmation(false);
     setSosNoticeAccepted(false);
     setShareOneTimeLocation(false);
@@ -86,9 +92,9 @@ export function CaseTrackingPage() {
     setIsLoading(true);
     setErrorState(null);
     try {
-      const [complaintRes, timelineRes, evidenceRes, chatRes, triageRes, sosRes, helpRes] = await Promise.all([getPublicComplaintRequest(activeCaseId, token), getComplaintTimelineRequest(activeCaseId, token), getComplaintEvidenceRequest(activeCaseId, token), getChatMessagesRequest(token, activeCaseId), getComplaintTriageRequest(activeCaseId, token), getCurrentSosRequest(token, activeCaseId), getVerifiedHelplinesRequest({
+      const [complaintRes, timelineRes, evidenceRes, chatRes, triageRes, sosRes, helpRes, platformRes] = await Promise.all([getPublicComplaintRequest(activeCaseId, token), getComplaintTimelineRequest(activeCaseId, token), getComplaintEvidenceRequest(activeCaseId, token), getChatMessagesRequest(token, activeCaseId), getComplaintTriageRequest(activeCaseId, token), getCurrentSosRequest(token, activeCaseId), getVerifiedHelplinesRequest({
         country: 'in'
-      })]);
+      }), getPlatformConfigRequest().catch(() => null)]);
       startTransition(() => {
         setComplaint(complaintRes.data.complaint);
         setTimeline(timelineRes.data.history);
@@ -97,6 +103,13 @@ export function CaseTrackingPage() {
         setTriage(triageRes.data.triage);
         setSos(sosRes.data.sos);
         setHelplines(helpRes.data.entries);
+        const features = platformRes?.data?.features;
+        setSosFeatures({
+          // A successful reporter-scoped SOS read proves the legacy endpoint exists.
+          internalSupport: typeof features?.sosInternalSupport === 'boolean'
+            ? features.sosInternalSupport : true,
+          location: features?.sosLocation === true
+        });
       });
     } catch (error) {
       if (error.code === 'REPORTER_ACCESS_EXPIRED') {
@@ -167,6 +180,9 @@ export function CaseTrackingPage() {
     return () => window.clearInterval(timer);
   }, [sos?.state, sos?.cancelUntil]);
   async function handleStartSos() {
+    if (sosActionRef.current) return;
+    sosActionRef.current = true;
+    setSosAction('submitting');
     setErrorState(null);
     try {
       const response = await startSosConfirmationRequest(reporterToken, caseId, crypto.randomUUID());
@@ -174,13 +190,22 @@ export function CaseTrackingPage() {
       setShowSosConfirmation(false);
       setSosNoticeAccepted(false);
     } catch (error) {
+      if (error.code === 'SOS_UNAVAILABLE' || error.status === 404) {
+        setSosFeatures(current => ({ ...current, internalSupport: false }));
+      }
       setErrorState({
         type: 'sos',
         message: t('runtime.genericRequestFailed')
       });
+    } finally {
+      sosActionRef.current = false;
+      setSosAction('idle');
     }
   }
   async function handleCancelSos() {
+    if (sosActionRef.current) return;
+    sosActionRef.current = true;
+    setSosAction('cancelling');
     try {
       const response = await cancelSosRequest(reporterToken, caseId, sos.sosId);
       setSos(response.data.sos);
@@ -190,6 +215,9 @@ export function CaseTrackingPage() {
         type: 'sos',
         message: t('runtime.genericRequestFailed')
       });
+    } finally {
+      sosActionRef.current = false;
+      setSosAction('idle');
     }
   }
   async function oneTimeLocation() {
@@ -206,6 +234,9 @@ export function CaseTrackingPage() {
     }));
   }
   async function handleActivateSos() {
+    if (sosActionRef.current) return;
+    sosActionRef.current = true;
+    setSosAction('submitting');
     setErrorState(null);
     const location = await oneTimeLocation();
     try {
@@ -224,6 +255,9 @@ export function CaseTrackingPage() {
         type: 'sos',
         message: t('runtime.genericRequestFailed')
       });
+    } finally {
+      sosActionRef.current = false;
+      setSosAction('idle');
     }
   }
   async function handleEvidenceUpload(event) {
@@ -396,31 +430,33 @@ export function CaseTrackingPage() {
               </p> : null}
           </section>
           <section className="surface-panel border-rose-200 p-6 sm:p-8">
-            <h2 className="text-xl font-semibold text-rose-950">{t("visible.fe5cd0778779")}</h2>
-            <p className="mt-2 text-sm leading-6 text-rose-800">{t("visible.3ed881e6a684")}</p>
-            {!sos || ['cancelled', 'resolved', 'expired', 'closed', 'false_alarm_marked'].includes(sos.state) ? !showSosConfirmation ? <button type="button" className="button-primary mt-4" onClick={() => setShowSosConfirmation(true)}>{t("visible.4ebb5b6037bc")}</button> : <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
+            <h2 className="text-xl font-semibold text-rose-950">{t('sos.title')}</h2>
+            <p className="mt-2 text-sm leading-6 text-rose-800">{t('sos.warning')}</p>
+            {!sosFeatures.internalSupport ? <p className="mt-4 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-900" role="status">{t('sos.unavailable')}</p> : null}
+            {sosAction !== 'idle' ? <p className="mt-3 text-sm font-semibold text-brand-700" role="status" aria-live="polite">{t(`sos.status.${sosAction}`)}</p> : null}
+            {sosFeatures.internalSupport && (!sos || ['cancelled', 'resolved', 'expired', 'closed', 'false_alarm_marked'].includes(sos.state)) ? !showSosConfirmation ? <button type="button" className="button-primary mt-4" disabled={sosAction !== 'idle'} onClick={() => setShowSosConfirmation(true)}>{t('sos.request')}</button> : <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4">
                   <label className="flex items-start gap-3 text-sm text-rose-950">
                     <input type="checkbox" checked={sosNoticeAccepted} onChange={event => setSosNoticeAccepted(event.target.checked)} />
                     <span>{t("visible.b565d4db7b5c")}</span>
                   </label>
                   <div className="mt-4 flex gap-3">
-                    <button type="button" className="button-primary" disabled={!sosNoticeAccepted} onClick={handleStartSos}>{t("visible.3b0238c3dd6c")}</button>
+                    <button type="button" className="button-primary" disabled={!sosNoticeAccepted || sosAction !== 'idle'} onClick={handleStartSos}>{t("visible.3b0238c3dd6c")}</button>
                     <button type="button" className="button-secondary" onClick={() => setShowSosConfirmation(false)}>{t("visible.76900f1bfd16")}</button>
                   </div>
                 </div> : null}
             {sos?.state === 'confirmation_pending' ? <div className="mt-4 rounded-2xl border border-rose-200 p-4" aria-live="polite">
                 <p className="font-semibold text-rose-950">{t("visible.688608c9ec97")}{sosSecondsRemaining}{t("visible.59f006d63bd0")}</p>
-                <label className="mt-3 flex items-start gap-3 text-sm text-brand-700">
-                  <input type="checkbox" checked={shareOneTimeLocation} onChange={event => setShareOneTimeLocation(event.target.checked)} />
-                  <span>{t("visible.a4992c41fad8")}</span>
-                </label>
+                {sosFeatures.location ? <label className="mt-3 flex items-start gap-3 text-sm text-brand-700">
+                    <input type="checkbox" checked={shareOneTimeLocation} onChange={event => setShareOneTimeLocation(event.target.checked)} />
+                    <span>{t('sos.location')}</span>
+                  </label> : <p className="mt-3 text-sm text-brand-700">{t('sos.locationUnavailable')}</p>}
                 <div className="mt-4 flex flex-wrap gap-3">
-                  <button type="button" className="button-secondary" onClick={handleCancelSos}>{t("visible.56196683592d")}</button>
-                  <button type="button" className="button-primary" disabled={sosSecondsRemaining > 0} onClick={handleActivateSos}>{t("visible.9f96d3783f93")}</button>
+                  <button type="button" className="button-secondary" disabled={sosAction !== 'idle'} onClick={handleCancelSos}>{t("visible.56196683592d")}</button>
+                  <button type="button" className="button-primary" disabled={sosSecondsRemaining > 0 || sosAction !== 'idle'} onClick={handleActivateSos}>{t("visible.9f96d3783f93")}</button>
                 </div>
               </div> : null}
             {sos && !['confirmation_pending', 'cancelled'].includes(sos.state) ? <div className="mt-4 rounded-2xl border border-brand-100 bg-brand-50 p-4">
-                <p className="font-semibold capitalize text-brand-950">{t("visible.755c8b2a9fb1")}{sos.state.replaceAll('_', ' ')}
+                <p className="font-semibold capitalize text-brand-950">{t("visible.755c8b2a9fb1")}{t(`sos.status.${sos.state}`)}
                 </p>
                 <p className="mt-2 text-sm text-brand-700">{sos.statusNotice}</p>
                 <p className="mt-2 text-xs text-brand-600">{t("visible.1f61ab40eab1")}</p>

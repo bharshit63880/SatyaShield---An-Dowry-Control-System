@@ -56,7 +56,7 @@ test('anonymous submission, one-time credentials, unlock, evidence, chat, SOS an
   await chat.getByRole('button', { name: 'Send' }).click();
   await expect(chat.getByText('Guarded reporter browser message')).toBeVisible();
 
-  await page.getByRole('button', { name: 'Start SOS safety request' }).click();
+  await page.getByRole('button', { name: 'Request urgent internal support' }).click();
   await page.getByText(/I understand this is an internal safety request/)
     .locator('..').locator('input[type="checkbox"]').check();
   await page.getByRole('button', { name: 'Begin cancel countdown' }).click();
