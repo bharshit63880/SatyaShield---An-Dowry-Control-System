@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { normalizeAllowedOrigin } from '../utils/cors-origin.js';
 
 dotenv.config();
 
@@ -76,7 +77,8 @@ function parseUrlList(value, fallback) {
   const urls = (value ?? fallback)
     .split(',')
     .map((url) => url.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .map(normalizeAllowedOrigin);
 
   if (!urls.length) {
     throw new Error('CLIENT_URL must contain at least one allowed origin.');

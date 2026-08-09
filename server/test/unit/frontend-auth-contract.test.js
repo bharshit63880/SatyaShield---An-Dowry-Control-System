@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import test from 'node:test';
+import { isAllowedOrigin, normalizeAllowedOrigin } from '../../src/utils/cors-origin.js';
 
 const root = path.resolve(import.meta.dirname, '../../..');
 
@@ -35,7 +36,16 @@ test('server cookie and CORS source enforce credential-safe boundaries', async (
   assert.match(csrf, /httpOnly/);
   assert.match(csrf, /secure:\s*isProduction/);
   assert.match(csrf, /sameSite:\s*'strict'/);
-  assert.match(app, /env\.clientUrls\.includes\(origin\)/);
+  assert.match(app, /isAllowedOrigin\(origin, env\.clientUrls\)/);
   assert.match(app, /credentials:\s*true/);
   assert.equal(app.includes("origin: '*'"), false);
+});
+
+test('CORS allowlist normalizes harmless trailing slashes without widening origins', () => {
+  const allowed = [normalizeAllowedOrigin('https://satya-shield-client.vercel.app/')];
+  assert.deepEqual(allowed, ['https://satya-shield-client.vercel.app']);
+  assert.equal(isAllowedOrigin('https://satya-shield-client.vercel.app', allowed), true);
+  assert.equal(isAllowedOrigin('https://evil.example', allowed), false);
+  assert.equal(isAllowedOrigin('https://satya-shield-client.vercel.app.evil.example', allowed), false);
+  assert.throws(() => normalizeAllowedOrigin('javascript:alert(1)'));
 });

@@ -14,6 +14,7 @@ import { ApiError } from './utils/ApiError.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import apiRoutes from './routes/index.js';
 import { operationalRequestLogger } from './services/logger.service.js';
+import { isAllowedOrigin } from './utils/cors-origin.js';
 
 const app = express();
 
@@ -37,7 +38,7 @@ app.use(requestContext);
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || env.clientUrls.includes(origin)) {
+      if (isAllowedOrigin(origin, env.clientUrls)) {
         callback(null, true);
         return;
       }

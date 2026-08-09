@@ -63,7 +63,7 @@ services:
       - key: ADMIN_PASSWORD
         sync: false
       - key: CLIENT_URL
-        sync: false
+        value: https://satya-shield-client.vercel.app
       - key: BCRYPT_SALT_ROUNDS
         value: 10
       - key: AI_PROCESSING_ENABLED
