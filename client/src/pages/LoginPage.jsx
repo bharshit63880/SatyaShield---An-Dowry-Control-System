@@ -100,7 +100,11 @@ export function LoginPage() {
         }));
       }
     } catch (err) {
-      setErrorMessage(t('runtime.loginFailed'));
+      setErrorMessage(t(
+        err.code === 'AUTH_ACCOUNT_UNAVAILABLE'
+          ? 'runtime.accountUnavailable'
+          : 'runtime.loginFailed'
+      ));
     } finally {
       setIsSubmitting(false);
     }
