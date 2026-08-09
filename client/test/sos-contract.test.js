@@ -8,16 +8,31 @@ import { translations } from '../src/i18n/translations.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const tracking = fs.readFileSync(path.join(root, 'src/pages/CaseTrackingPage.jsx'), 'utf8');
 const api = fs.readFileSync(path.join(root, 'src/services/api.js'), 'utf8');
+const platformController = fs.readFileSync(
+  path.join(root, '../server/src/controllers/platform.controller.js'), 'utf8'
+);
 const englishCopy = Object.values(translations.en).join('\n');
 
 test('Phase 10 SOS UI requires confirmation, supports cancellation, and defaults location off', () => {
+  assert.match(englishCopy, /Request urgent internal support/);
+  assert.match(englishCopy, /does not contact police, ambulance or emergency services/);
   assert.match(englishCopy, /I understand this is an internal safety request/);
-  assert.match(tracking, /disabled=\{!sosNoticeAccepted\}/);
+  assert.match(tracking, /disabled=\{!sosNoticeAccepted \|\| sosAction !== 'idle'\}/);
   assert.match(englishCopy, /Cancellation countdown/);
   assert.match(englishCopy, /Cancel request/);
   assert.match(tracking, /useState\(false\).*shareOneTimeLocation/s);
   assert.match(englishCopy, /This is off by default/);
   assert.match(englishCopy, /created without location because location permission was unavailable/);
+  assert.match(tracking, /sosFeatures\.internalSupport/);
+  assert.match(tracking, /sosActionRef\.current/);
+  assert.match(tracking, /getPlatformConfigRequest\(\)\.catch/);
+  assert.match(tracking, /disabled=\{!sosNoticeAccepted \|\| sosAction !== 'idle'\}/);
+  assert.doesNotMatch(tracking, /localStorage|sessionStorage/);
+  assert.match(tracking, /if \(!reporterToken \|\| !complaint\)/);
+  assert.match(tracking, /if \(!shareOneTimeLocation \|\| !navigator\.geolocation\) return null/);
+  assert.match(tracking, /role="status" aria-live="polite"/);
+  assert.match(platformController, /sosInternalSupport: env\.sosEnabled && env\.sosInternalRoutingEnabled/);
+  assert.match(platformController, /sosExternalDelivery: false/);
 });
 
 test('Phase 10 UI and APIs make no dispatch claim and expose deliberate verified contacts only', () => {

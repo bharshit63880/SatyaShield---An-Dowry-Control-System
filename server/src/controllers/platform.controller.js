@@ -37,7 +37,10 @@ export const getPlatformConfig = asyncHandler(async (_req, res) => {
         mediaUpload: true,
         chatbot: false,
         mfa: true,
-        auditLogging: true
+        auditLogging: true,
+        sosInternalSupport: env.sosEnabled && env.sosInternalRoutingEnabled,
+        sosLocation: env.sosEnabled && env.sosLocationEnabled,
+        sosExternalDelivery: false
       }
     }
   });
