@@ -169,8 +169,13 @@ export function LoginPage() {
       await registerNgoRequest(ngoData);
       setSuccessMessage(t('runtime.ngoRegistered'));
       setMode('login');
-    } catch {
-      setErrorMessage(t('runtime.genericRequestFailed'));
+    } catch (err) {
+      const registrationErrorKeys = {
+        AUTH_PASSWORD_POLICY: 'runtime.ngoPasswordPolicy',
+        NGO_ACCOUNT_EXISTS: 'runtime.ngoAccountExists',
+        NGO_REQUIRED_FIELDS: 'runtime.ngoRequiredFields'
+      };
+      setErrorMessage(t(registrationErrorKeys[err.code] || 'runtime.genericRequestFailed'));
     } finally {
       setIsSubmitting(false);
     }
@@ -354,7 +359,7 @@ export function LoginPage() {
         justifyContent: 'center'
       }}>
           {/* Alerts */}
-          {errorMessage && <div className="alert-error" style={{
+          {errorMessage && <div className="alert-error" role="alert" style={{
           marginBottom: '20px'
         }}>
               ⚠️ {errorMessage}
@@ -599,7 +604,12 @@ export function LoginPage() {
                 </div>
                 <div>
                   <label style={labelStyle}>{t("visible.c9cbc7f885bd")}</label>
-                  <input required type="password" name="password" value={ngoData.password} onChange={handleChange(setNgoData)} style={fieldStyle} placeholder={t("visible.f56173fa2e73")} />
+                  <input required type="password" name="password" value={ngoData.password} onChange={handleChange(setNgoData)} minLength="12" maxLength="256" autoComplete="new-password" aria-describedby="ngo-password-help" style={fieldStyle} placeholder={t("visible.f56173fa2e73")} />
+                  <p id="ngo-password-help" style={{
+                margin: '6px 2px 0',
+                color: 'rgba(255,255,255,0.5)',
+                fontSize: '12px'
+              }}>{t('runtime.ngoPasswordHelp')}</p>
                 </div>
                 <div>
                   <label style={labelStyle}>{t("visible.9e72a8fda746")}</label>

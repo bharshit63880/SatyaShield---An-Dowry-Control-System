@@ -53,12 +53,16 @@ export const registerNgo = asyncHandler(async (req, res) => {
   const { name, email, password, phone, city, district, description, servedCities, servedDistricts } = req.body;
 
   if (!name || !email || !password || !phone || !city || !district) {
-    throw new ApiError(400, 'Please fill out all required NGO profile fields.');
+    throw new ApiError(400, 'Please fill out all required NGO profile fields.', {
+      code: 'NGO_REQUIRED_FIELDS'
+    });
   }
 
   const existingUser = await User.findOne({ email: email.toLowerCase() });
   if (existingUser) {
-    throw new ApiError(400, 'An account with this email already exists.');
+    throw new ApiError(400, 'An account with this email already exists.', {
+      code: 'NGO_ACCOUNT_EXISTS'
+    });
   }
 
   // Create pending User
