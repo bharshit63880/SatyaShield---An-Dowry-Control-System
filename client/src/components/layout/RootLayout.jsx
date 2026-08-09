@@ -73,8 +73,10 @@ export function RootLayout() {
       <header className="app-header">
         <div className="page-shell app-header-inner">
           <Link to="/" className="app-brand" aria-label={t('app.name')}>
-            <img aria-hidden="true" className="app-brand-mark" src="/favicon.png" alt="" />
-            <span><strong>{t('app.name')}</strong><small>{t('app.tagline')}</small></span>
+            <picture aria-hidden="true">
+              <source media="(max-width: 520px)" srcSet="/favicon.png" />
+              <img className="app-brand-logo" src="/satyashield-logo.png" alt="" />
+            </picture>
           </Link>
           <nav className="desktop-navigation neumorphic-nav" aria-label={t("visible.efe10c80ec8a")}>
             {navigation.map(item => <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({

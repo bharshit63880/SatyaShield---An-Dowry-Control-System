@@ -139,18 +139,15 @@ select {
     inset 14px 14px 28px rgba(30, 55, 72, .13),
     inset -16px -16px 30px rgba(0, 0, 0, .48);
 }
-.app-brand { display: flex; align-items: center; gap: .72rem; min-width: max-content; padding-left: .35rem; }
-.app-brand span:last-child { display: grid; }
-.app-brand small { color: #aab5c6; font-size: .7rem; }
-.app-brand-mark {
-  width: 3rem;
-  height: 3rem;
-  border-radius: 1rem;
+.app-brand { display: flex; align-items: center; min-width: max-content; padding-left: .35rem; }
+.app-brand picture { display: block; }
+.app-brand-logo {
+  width: clamp(9rem, 12vw, 11rem);
+  height: 3.35rem;
   display: block;
-  object-fit: cover;
-  background: #09111e;
-  border: 1px solid rgba(0, 229, 204, .18);
-  box-shadow: 7px 7px 15px rgba(0, 0, 0, .58), -4px -4px 12px rgba(34, 64, 83, .34), inset 0 0 18px rgba(0, 229, 204, .06);
+  object-fit: contain;
+  object-position: left center;
+  filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .48));
 }
 .desktop-navigation, .header-actions, .footer-inner { display: flex; align-items: center; gap: .75rem; }
 .neumorphic-nav {
@@ -267,10 +264,9 @@ p, label, button, a, h1, h2, h3 { overflow-wrap: anywhere; }
   .app-header { top: .25rem; padding: .25rem 0 .65rem; }
   .app-header-inner { gap: .45rem; padding-inline: 1.05rem; }
   .app-header-inner::before, .app-header-inner::after { clip-path: polygon(3.5% 0, 100% 0, 96.5% 100%, 0 100%); }
-  .app-brand { gap: .45rem; padding-left: .2rem; }
-  .app-brand strong { font-size: .95rem; }
-  .app-brand-mark { width: 2.35rem; height: 2.35rem; border-radius: .8rem; }
-  .app-brand small, .header-actions > .button-primary, .header-actions > .button-ghost { display: none; }
+  .app-brand { padding-left: .2rem; }
+  .app-brand-logo { width: 2.75rem; height: 2.75rem; object-position: center; }
+  .header-actions > .button-primary, .header-actions > .button-ghost { display: none; }
   .header-actions { gap: .3rem; }
   .language-switcher select { width: 5.8rem; max-width: 5.8rem; padding-inline: .45rem; }
   .mobile-menu-button { min-width: 44px; min-height: 44px; }
