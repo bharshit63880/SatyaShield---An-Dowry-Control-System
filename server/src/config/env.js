@@ -7,6 +7,7 @@ const requiredVariables = [
   'MONGODB_URI',
   'JWT_SECRET',
   'REPORTER_ACCESS_HMAC_KEY',
+  'CASE_INTEGRITY_HMAC_KEY',
   'REPORTER_TOKEN_SECRET',
   'STAFF_ACCESS_TOKEN_SECRET',
   'REFRESH_TOKEN_PEPPER',
@@ -33,6 +34,10 @@ if (process.env.JWT_SECRET.length < 32) {
 
 if (process.env.REPORTER_ACCESS_HMAC_KEY.length < 32) {
   throw new Error('REPORTER_ACCESS_HMAC_KEY must be at least 32 characters long.');
+}
+
+if (process.env.CASE_INTEGRITY_HMAC_KEY.length < 32) {
+  throw new Error('CASE_INTEGRITY_HMAC_KEY must be at least 32 characters long.');
 }
 
 if (process.env.REPORTER_TOKEN_SECRET.length < 32) {
@@ -109,6 +114,7 @@ export const env = {
   jwtIssuer: process.env.JWT_ISSUER?.trim() || 'dahej-control-system',
   jwtAudience: process.env.JWT_AUDIENCE?.trim() || 'dahej-control-system-admin',
   reporterAccessHmacKey: process.env.REPORTER_ACCESS_HMAC_KEY,
+  caseIntegrityHmacKey: process.env.CASE_INTEGRITY_HMAC_KEY,
   reporterTokenSecret: process.env.REPORTER_TOKEN_SECRET,
   reporterTokenAudience:
     process.env.REPORTER_TOKEN_AUDIENCE?.trim() || 'satyashield-reporter-case',
@@ -162,6 +168,15 @@ export const env = {
   complaintRetentionDays: parseNumber(process.env.COMPLAINT_RETENTION_DAYS, 730, 'COMPLAINT_RETENTION_DAYS'),
   evidenceRetentionDays: parseNumber(process.env.EVIDENCE_RETENTION_DAYS, 730, 'EVIDENCE_RETENTION_DAYS'),
   auditRetentionDays: parseNumber(process.env.AUDIT_RETENTION_DAYS, 365, 'AUDIT_RETENTION_DAYS')
+  ,caseIntegrityPolicyVersion:
+    process.env.CASE_INTEGRITY_POLICY_VERSION?.trim() || 'case-integrity-v1'
+  ,caseIntegrityFingerprintVersion:
+    process.env.CASE_INTEGRITY_FINGERPRINT_VERSION?.trim() || 'narrative-hmac-v1'
+  ,caseIntegrityDuplicateWindowDays: parseNumber(
+    process.env.CASE_INTEGRITY_DUPLICATE_WINDOW_DAYS,
+    90,
+    'CASE_INTEGRITY_DUPLICATE_WINDOW_DAYS'
+  )
   ,ngoRoutingPolicyVersion: process.env.NGO_ROUTING_POLICY_VERSION?.trim() || 'ngo-routing-v1',
   ngoAssignmentOfferMinutes: parseNumber(process.env.NGO_ASSIGNMENT_OFFER_MINUTES, 60, 'NGO_ASSIGNMENT_OFFER_MINUTES'),
   ngoDefaultMaxActiveCases: parseNumber(process.env.NGO_DEFAULT_MAX_ACTIVE_CASES, 20, 'NGO_DEFAULT_MAX_ACTIVE_CASES'),
@@ -253,6 +268,9 @@ if (env.aiProcessingEnabled) {
 }
 if (env.ngoDefaultMaxActiveCases < 1 || env.ngoDefaultMaxActiveCases > 10000) {
   throw new Error('NGO_DEFAULT_MAX_ACTIVE_CASES must be between 1 and 10000.');
+}
+if (env.caseIntegrityDuplicateWindowDays < 1 || env.caseIntegrityDuplicateWindowDays > 365) {
+  throw new Error('CASE_INTEGRITY_DUPLICATE_WINDOW_DAYS must be between 1 and 365.');
 }
 if (env.ngoAssignmentOfferMinutes < 5 || env.ngoAssignmentOfferMinutes > 10080) {
   throw new Error('NGO_ASSIGNMENT_OFFER_MINUTES must be between 5 and 10080.');

@@ -39,6 +39,8 @@ import {
 } from '../services/evidence-vault.service.js';
 import { localPrivateStorageProvider } from '../services/storage/local-private-storage.provider.js';
 import { TriageAssessment } from '../models/triage-assessment.model.js';
+import { CaseIntegrityAssessment } from '../models/case-integrity-assessment.model.js';
+import { CaseLink } from '../models/case-link.model.js';
 
 // 1. Submit Anonymous Complaint
 export const submitComplaint = asyncHandler(async (req, res) => {
@@ -50,7 +52,7 @@ export const submitComplaint = asyncHandler(async (req, res) => {
 
   let createdComplaint;
   try {
-    const { complaint, accessSecret } = await createComplaint({
+    const { complaint, accessSecret, integrityAssessment } = await createComplaint({
       description,
       mediaUrl: null,
       mediaType: 'none',
@@ -91,6 +93,20 @@ export const submitComplaint = asyncHandler(async (req, res) => {
         assessmentSource: 'deterministic'
       }, req
     });
+    await createAuditLog({
+      role: 'system',
+      action: integrityAssessment?.reviewRequired
+        ? 'case_integrity_review_required'
+        : 'case_integrity_assessed',
+      resourceType: 'complaint',
+      resourceRef: complaint.anonymousId,
+      details: {
+        stateTo: integrityAssessment?.status,
+        policyVersion: integrityAssessment?.modelOrRuleVersion,
+        assessmentSource: 'deterministic'
+      },
+      req
+    });
 
     return sendCreated(res, {
       message: 'Complaint submitted successfully.',
@@ -111,6 +127,8 @@ export const submitComplaint = asyncHandler(async (req, res) => {
         Evidence.deleteMany({ complaintId: createdComplaint.anonymousId }),
         CaseHistory.deleteMany({ complaintId: createdComplaint.anonymousId }),
         TriageAssessment.deleteMany({ complaintId: createdComplaint.anonymousId }),
+        CaseIntegrityAssessment.deleteMany({ complaintId: createdComplaint.anonymousId }),
+        CaseLink.deleteMany({ sourceComplaintId: createdComplaint.anonymousId }),
         Complaint.deleteOne({ _id: createdComplaint._id })
       ]);
     }

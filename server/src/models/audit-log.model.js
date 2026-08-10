@@ -32,7 +32,8 @@ export const AUDIT_ACTIONS = [
   'sos_false_alarm_marked', 'sos_closed',
   'sos_location_consent_recorded', 'sos_location_accessed',
   'sos_access_denied', 'helpline_entry_reviewed',
-  'helpline_entry_deactivated'
+  'helpline_entry_deactivated',
+  'case_integrity_assessed', 'case_integrity_review_required'
 ];
 
 const auditLogSchema = new mongoose.Schema(

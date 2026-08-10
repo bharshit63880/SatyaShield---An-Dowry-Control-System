@@ -12,4 +12,5 @@
 - Hindi and legal/privacy content lack qualified external review.
 - Windows Narrator review requires human execution.
 - Production monitoring, NGO operating agreements, incident exercises, and backup restoration are not operationally verified.
+- Case integrity currently detects only bounded exact normalized narrative matches. Approximate similarity, evidence-hash correlation, privacy-preserving network signals, reviewer conflict/recusal, dual adverse approval, appeal APIs, reviewer anomaly metrics, and the restricted review UI remain unimplemented.
 - Complete anonymity, guaranteed deletion, guaranteed response, legal certification, and production readiness are not claimed.

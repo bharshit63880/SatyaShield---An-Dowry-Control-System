@@ -78,6 +78,19 @@ const complaintSchema = new mongoose.Schema(
       type: String, enum: ['low', 'moderate', 'high', 'critical'], default: null, index: true
     },
     currentTriageReviewState: { type: String, default: null, index: true },
+    currentIntegrityAssessmentId: { type: String, default: null, index: true },
+    currentIntegrityVersion: { type: Number, default: 0 },
+    currentIntegrityStatus: {
+      type: String,
+      enum: [
+        'not_evaluated', 'normal', 'duplicate_review',
+        'conflicting_information_review', 'coordinated_abuse_suspected',
+        'malicious_abuse_suspected', 'human_review_completed'
+      ],
+      default: null,
+      index: true
+    },
+    currentIntegrityReviewRequired: { type: Boolean, default: false, index: true },
     routingStatus: {
       type: String,
       enum: ['pending_admin_review', 'offer_pending', 'assigned', 'being_reviewed', 'changed', 'completed'],

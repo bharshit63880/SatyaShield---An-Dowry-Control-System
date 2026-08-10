@@ -223,6 +223,38 @@ test('MongoDB-backed reporter submission-to-tracking flow', { skip: !runtimeEnab
   });
   assert.equal(submissionB.response.status, 201);
   const caseB = submissionB.payload.data.caseId;
+  const submissionC = await api(baseUrl, '/complaints', {
+    method: 'POST',
+    body: {
+      description: ' runtime TEST complaint describing dowry harassment and threats!!! ',
+      complaintCategory: 'dowry_harassment',
+      locationConsent: false,
+      website: '',
+      privacyAcknowledged: true,
+      privacyNoticeVersion: 'privacy-2026-07-v1',
+      consentVersion: 'consent-2026-07-v1',
+      aiConsent: false
+    }
+  });
+  assert.equal(submissionC.response.status, 201);
+  const caseC = submissionC.payload.data.caseId;
+  const integrityA = await mongoose.connection.collection('caseintegrityassessments')
+    .findOne({ complaintId: caseA });
+  const integrityC = await mongoose.connection.collection('caseintegrityassessments')
+    .findOne({ complaintId: caseC });
+  const linkC = await mongoose.connection.collection('caselinks')
+    .findOne({ sourceComplaintId: caseC, candidateComplaintId: caseA });
+  assert.equal(integrityA.status, 'normal');
+  assert.equal(integrityC.status, 'duplicate_review');
+  assert.equal(integrityC.reviewRequired, true);
+  assert.deepEqual(integrityC.signalCodes, ['exact_narrative_match']);
+  assert.equal(typeof integrityC.narrativeFingerprint, 'string');
+  assert.equal(JSON.stringify(integrityC).includes(submissionC.payload.data.accessSecret), false);
+  assert.equal(linkC.confidenceBand, 'exact');
+  const complaintC = await mongoose.connection.collection('complaints')
+    .findOne({ anonymousId: caseC });
+  assert.equal(complaintC.currentIntegrityStatus, 'duplicate_review');
+  assert.equal(complaintC.currentTriageSeverity, rawRecordA.currentTriageSeverity);
   const crossCase = await api(baseUrl, `/complaints/lookup/${caseB}`, { token: tokenA });
   assert.equal(crossCase.response.status, 403);
   assert.equal(crossCase.payload.code, 'REPORTER_CASE_SCOPE_DENIED');

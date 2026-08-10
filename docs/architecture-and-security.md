@@ -22,3 +22,7 @@ Residual risks include compromised client devices, browser/network metadata, soc
 ## Evidence, routing, triage, chat, and SOS
 
 Evidence lifecycle states prevent unavailable, rejected, quarantined, missing, or pending files from being downloaded. NGO matching is deterministic and capacity-aware; pre-acknowledgment views are minimized. Triage uses structured answers and explicit rules, not narrative keyword scoring. Critical results require human review and do not trigger dispatch. Chat is server-persisted and encrypted in transit and at rest, but it is not end-to-end encrypted. SOS requires confirmation and supports cancellation and optional one-time minimized location.
+
+## Case integrity foundation
+
+Case integrity is independent from safety triage. New complaints receive an immutable, versioned assessment. Exact normalized narrative matches use a purpose-versioned keyed HMAC; the normalized narrative is not stored. Candidate lookup is time-bounded and capped, and creates internal reversible links for future human review. A match never rejects, hides, closes, downgrades, reroutes, or revokes reporter access to a complaint. Approximate similarity, malicious-abuse decisions, reviewer conflict declarations, dual approval, and appeals are not yet implemented. See `case-integrity-decision-record.md`.

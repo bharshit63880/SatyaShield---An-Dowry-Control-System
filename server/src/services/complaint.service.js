@@ -5,6 +5,10 @@ import { COMPLAINT_RISK_LEVELS, COMPLAINT_STATUSES, Complaint } from '../models/
 import { CaseHistory } from '../models/case-history.model.js';
 import { analyzeComplaintRisk } from './complaint-risk.service.js';
 import { createInitialTriageAssessment, getCurrentAssessment, reporterTriageView } from './triage.service.js';
+import { createInitialIntegrityAssessment } from './case-integrity.service.js';
+import { CaseIntegrityAssessment } from '../models/case-integrity-assessment.model.js';
+import { CaseLink } from '../models/case-link.model.js';
+import { TriageAssessment } from '../models/triage-assessment.model.js';
 import { ApiError } from '../utils/ApiError.js';
 import { decryptSensitiveValue, encryptSensitiveValue } from '../utils/crypto.js';
 import { buildPaginationMeta } from '../utils/query.js';
@@ -238,10 +242,17 @@ export async function createComplaint({
     retentionEligibleAt: new Date(Date.now() + env.complaintRetentionDays * 86400000),
     timestamp: new Date()
   });
+  let integrityAssessment;
   try {
     await createInitialTriageAssessment(complaint, triageInput);
+    integrityAssessment = await createInitialIntegrityAssessment(complaint, description);
   } catch (error) {
-    await Complaint.deleteOne({ _id: complaint._id });
+    await Promise.all([
+      CaseLink.deleteMany({ sourceComplaintId: complaint.anonymousId }),
+      CaseIntegrityAssessment.deleteMany({ complaintId: complaint.anonymousId }),
+      TriageAssessment.deleteMany({ complaintId: complaint.anonymousId }),
+      Complaint.deleteOne({ _id: complaint._id })
+    ]);
     throw error;
   }
 
@@ -253,7 +264,7 @@ export async function createComplaint({
     newStatus: 'submitted'
   });
 
-  return { complaint, accessSecret };
+  return { complaint, accessSecret, integrityAssessment };
 }
 
 export async function getRecentComplaints(limit = 8) {

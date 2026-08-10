@@ -2,6 +2,7 @@ process.env.NODE_ENV = 'test';
 process.env.MONGODB_URI = 'mongodb://127.0.0.1:27017/satyashield-phase1-test';
 process.env.JWT_SECRET = 'phase1-staff-jwt-secret-at-least-32-characters';
 process.env.REPORTER_ACCESS_HMAC_KEY = 'phase1-reporter-hmac-key-at-least-32-characters';
+process.env.CASE_INTEGRITY_HMAC_KEY = 'case-integrity-hmac-key-at-least-32-characters';
 process.env.REPORTER_TOKEN_SECRET = 'phase1-reporter-token-key-at-least-32-characters';
 process.env.STAFF_ACCESS_TOKEN_SECRET = 'phase5-staff-access-token-key-at-least-32-characters';
 process.env.REFRESH_TOKEN_PEPPER = 'phase5-refresh-token-pepper-at-least-32-characters';

@@ -4,6 +4,18 @@ import { submitComplaintRequest } from '../services/api';
 import { buildRecoveryCardContent } from '../utils/recovery-card';
 import { AI_DISCLOSURE_VERSION, CONSENT_VERSION, PRIVACY_NOTICE_VERSION } from '../config/privacy';
 const acceptedFileTypes = 'image/png,image/jpeg,image/webp';
+const SAFETY_QUESTIONS = [
+  ['dangerHappeningNow', 'safety.dangerNow'],
+  ['immediateThreatToLife', 'safety.lifeThreat'],
+  ['weaponInvolved', 'safety.weapon'],
+  ['seriousInjuryPresent', 'safety.seriousInjury'],
+  ['currentlyConfined', 'safety.confined'],
+  ['threatEscalating', 'safety.escalating'],
+  ['stalkingOrRepeatedContact', 'safety.stalking'],
+  ['vulnerablePersonAtRisk', 'safety.vulnerablePerson'],
+  ['urgentMedicalHelpNeeded', 'safety.medicalHelp'],
+  ['canSafelyContinue', 'safety.safeToContinue']
+];
 const STEPS = [{
   id: 1,
   labelKey: 'visible.36a606d48865',
@@ -544,8 +556,8 @@ export function ComplaintPage() {
               gap: '20px'
             }}>
                     <div className="alert-warning">{t("visible.3313cfeedc8f")}</div>
-                    {[['dangerHappeningNow', 'Is danger happening now?'], ['immediateThreatToLife', 'Is there an immediate threat to life?'], ['weaponInvolved', 'Is a weapon involved?'], ['seriousInjuryPresent', 'Is there a serious injury?'], ['currentlyConfined', 'Is anyone currently prevented from leaving?'], ['threatEscalating', 'Is the threat escalating?'], ['stalkingOrRepeatedContact', 'Is stalking or repeated unwanted contact occurring?'], ['vulnerablePersonAtRisk', 'May a child or another vulnerable person be at risk?'], ['urgentMedicalHelpNeeded', 'Does someone appear to need urgent medical help?'], ['canSafelyContinue', 'Can you safely continue using this application?']].map(([name, label]) => <div key={name}>
-                        <label htmlFor={`triage-${name}`} style={labelStyle}>{label}</label>
+                    {SAFETY_QUESTIONS.map(([name, labelKey]) => <div key={name}>
+                        <label htmlFor={`triage-${name}`} style={labelStyle}>{t(labelKey)}</label>
                         <select id={`triage-${name}`} name={name} value={formState[name]} onChange={handleChange} style={fieldStyle}>
                           <option value="unknown">{t("visible.b764cdc0eab7")}</option>
                           <option value="yes">{t("visible.85a39ab345d6")}</option>
